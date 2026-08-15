@@ -1,0 +1,53 @@
+{
+  "app": {
+    "name": "LocalLLM"
+  },
+  "chat": {
+    "placeholder": "LocalLLM को संदेश भेजें...",
+    "send": "भेजें",
+    "stop": "रोकें",
+    "newChat": "नई चैट",
+    "thinking": "सोच रहा है...",
+    "error": "कुछ गलत हो गया। कृपया पुनः प्रयास करें।",
+    "emptyTitle": "LocalLLM",
+    "emptySubtitle": "स्थानीय AI मॉडल के साथ बातचीत शुरू करें।",
+    "modelLoaded": "मॉडल सफलतापूर्वक लोड हुआ",
+    "modelLoading": "मॉडल लोड हो रहा है...",
+    "modelError": "मॉडल लोड करने में विफल"
+  },
+  "sidebar": {
+    "title": "चैट इतिहास",
+    "newChat": "नई चैट",
+    "today": "आज",
+    "yesterday": "कल",
+    "previousDays": "पिछले 7 दिन",
+    "older": "पुराने",
+    "settings": "सेटिंग्स",
+    "noChats": "अभी तक कोई चैट इतिहास नहीं",
+    "deleteChat": "हटाएं",
+    "renameChat": "नाम बदलें"
+  },
+  "settings": {
+    "title": "सेटिंग्स",
+    "language": "भाषा",
+    "model": "मॉडल",
+    "temperature": "तापमान",
+    "maxTokens": "अधिकतम टोकन",
+    "about": "के बारे में",
+    "version": "संस्करण",
+    "resetAll": "सभी डेटा रीसेट करें",
+    "resetConfirm": "क्या आप वाकई सभी चैट इतिहास हटाना चाहते हैं?",
+    "cancel": "रद्द करें",
+    "confirm": "पुष्टि करें"
+  },
+  "languages": {
+    "en": "English",
+    "es": "Español",
+    "hi": "हिन्दी",
+    "fr": "Français",
+    "de": "Deutsch",
+    "ja": "日本語",
+    "ko": "한국어",
+    "zh": "中文"
+  }
+}

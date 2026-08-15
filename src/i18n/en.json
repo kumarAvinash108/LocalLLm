@@ -1,0 +1,53 @@
+{
+  "app": {
+    "name": "LocalLLM"
+  },
+  "chat": {
+    "placeholder": "Message LocalLLM...",
+    "send": "Send",
+    "stop": "Stop",
+    "newChat": "New Chat",
+    "thinking": "Thinking...",
+    "error": "Something went wrong. Please try again.",
+    "emptyTitle": "LocalLLM",
+    "emptySubtitle": "Start a conversation with a local AI model.",
+    "modelLoaded": "Model loaded successfully",
+    "modelLoading": "Loading model...",
+    "modelError": "Failed to load model"
+  },
+  "sidebar": {
+    "title": "Chat History",
+    "newChat": "New Chat",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "previousDays": "Previous 7 Days",
+    "older": "Older",
+    "settings": "Settings",
+    "noChats": "No chat history yet",
+    "deleteChat": "Delete",
+    "renameChat": "Rename"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "model": "Model",
+    "temperature": "Temperature",
+    "maxTokens": "Max Tokens",
+    "about": "About",
+    "version": "Version",
+    "resetAll": "Reset All Data",
+    "resetConfirm": "Are you sure you want to delete all chat history?",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
+  },
+  "languages": {
+    "en": "English",
+    "es": "Español",
+    "hi": "हिन्दी",
+    "fr": "Français",
+    "de": "Deutsch",
+    "ja": "日本語",
+    "ko": "한국어",
+    "zh": "中文"
+  }
+}

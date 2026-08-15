@@ -1,0 +1,53 @@
+{
+  "app": {
+    "name": "LocalLLM"
+  },
+  "chat": {
+    "placeholder": "Envía un mensaje a LocalLLM...",
+    "send": "Enviar",
+    "stop": "Detener",
+    "newChat": "Nuevo Chat",
+    "thinking": "Pensando...",
+    "error": "Algo salió mal. Por favor, inténtalo de nuevo.",
+    "emptyTitle": "LocalLLM",
+    "emptySubtitle": "Inicia una conversación con un modelo de IA local.",
+    "modelLoaded": "Modelo cargado exitosamente",
+    "modelLoading": "Cargando modelo...",
+    "modelError": "Error al cargar el modelo"
+  },
+  "sidebar": {
+    "title": "Historial de Chats",
+    "newChat": "Nuevo Chat",
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "previousDays": "7 Días Anteriores",
+    "older": "Más Antiguo",
+    "settings": "Configuración",
+    "noChats": "Sin historial de chats",
+    "deleteChat": "Eliminar",
+    "renameChat": "Renombrar"
+  },
+  "settings": {
+    "title": "Configuración",
+    "language": "Idioma",
+    "model": "Modelo",
+    "temperature": "Temperatura",
+    "maxTokens": "Máximo de Tokens",
+    "about": "Acerca de",
+    "version": "Versión",
+    "resetAll": "Restablecer Todos los Datos",
+    "resetConfirm": "¿Estás seguro de que deseas eliminar todo el historial de chats?",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar"
+  },
+  "languages": {
+    "en": "English",
+    "es": "Español",
+    "hi": "हिन्दी",
+    "fr": "Français",
+    "de": "Deutsch",
+    "ja": "日本語",
+    "ko": "한국어",
+    "zh": "中文"
+  }
+}

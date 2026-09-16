@@ -127,3 +127,8 @@ model's Hugging Face page before downloading.
 
 MIT © 2026 LocalLLM Contributors — see [`LICENSE`](./LICENSE).
 Dependency licenses: [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md).
+
+## Contributing
+
+PRs welcome — please read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first
+(dev build required, quality gates, and how releases work).

@@ -51,7 +51,14 @@ jobs:
 
       - name: Download APK artifact
         run: |
-          URL=$(jq -r '.artifacts.buildUrl // .[0].artifacts.buildUrl' build.json)
+          echo "=== build.json preview ==="
+          head -c 5000 build.json; echo
+          URL=$(jq -r 'if type == "array" then .[0] else . end | .artifacts.applicationArchiveUrl // .artifacts.buildUrl // empty' build.json)
+          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+            echo "Failed to extract artifact URL from build.json"
+            jq . build.json
+            exit 1
+          fi
           echo "APK URL: $URL"
           curl -L --fail -o LocalLLM.apk "$URL"
           ls -lh LocalLLM.apk

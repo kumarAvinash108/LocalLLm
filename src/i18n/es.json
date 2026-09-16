@@ -23,6 +23,7 @@
     "previousDays": "7 Días Anteriores",
     "older": "Más Antiguo",
     "settings": "Configuración",
+    "models": "Modelos",
     "noChats": "Sin historial de chats",
     "deleteChat": "Eliminar",
     "renameChat": "Renombrar"
@@ -39,6 +40,11 @@
     "resetConfirm": "¿Estás seguro de que deseas eliminar todo el historial de chats?",
     "cancel": "Cancelar",
     "confirm": "Confirmar"
+  },
+  "models": {
+    "title": "Modelos",
+    "loaded": "Cargado — listo para chatear sin conexión",
+    "manageHint": "Toca para descargar y cargar un modelo"
   },
   "languages": {
     "en": "English",

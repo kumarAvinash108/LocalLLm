@@ -7,9 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kumaravinash108.localllm"
     },
     "android": {
+      "package": "com.kumaravinash108.localllm",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -30,7 +32,17 @@
           "forceCxx20": true,
           "enableOpenCLAndHexagon": true
         }
-      ]
-    ]
+      ],
+      "expo-localization",
+      "expo-sqlite",
+      "expo-status-bar",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "841ca181-66d8-4c5f-924f-610cbc2ae394"
+      }
+    },
+    "owner": "avinash0808"
   }
 }

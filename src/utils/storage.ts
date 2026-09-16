@@ -1,10 +1,12 @@
 import AsyncStorage from 'expo-sqlite/kv-store';
-import { Conversation, Settings } from '../types';
+import { Conversation, DownloadedModel, Settings } from '../types';
 
 const KEYS = {
   CONVERSATIONS: '@localllm_conversations',
   SETTINGS: '@localllm_settings',
   ACTIVE_CONVERSATION: '@localllm_active_conversation',
+  DOWNLOADED_MODELS: '@localllm_downloaded_models',
+  ACTIVE_MODEL_ID: '@localllm_active_model_id',
 };
 
 export const Storage = {
@@ -67,6 +69,35 @@ export const Storage = {
 
   async saveSettings(settings: Settings): Promise<void> {
     await AsyncStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
+  },
+
+  async getDownloadedModels(): Promise<DownloadedModel[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.DOWNLOADED_MODELS);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async saveDownloadedModels(models: DownloadedModel[]): Promise<void> {
+    await AsyncStorage.setItem(KEYS.DOWNLOADED_MODELS, JSON.stringify(models));
+  },
+
+  async getActiveModelId(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(KEYS.ACTIVE_MODEL_ID);
+    } catch {
+      return null;
+    }
+  },
+
+  async setActiveModelId(id: string | null): Promise<void> {
+    if (id) {
+      await AsyncStorage.setItem(KEYS.ACTIVE_MODEL_ID, id);
+    } else {
+      await AsyncStorage.removeItem(KEYS.ACTIVE_MODEL_ID);
+    }
   },
 
   async clearAll(): Promise<void> {

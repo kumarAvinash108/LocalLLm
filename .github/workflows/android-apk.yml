@@ -1,0 +1,72 @@
+# Builds the Android APK on EAS and publishes it to a rolling
+# `latest` GitHub Release, so anyone can download and install it.
+#
+# Triggers:
+#   - every push to main (including merged PRs)
+#   - manually via "Run workflow" in the Actions tab
+#
+# One-time setup ( Maintainer only ):
+#   1. Create an Expo account, then run once locally and follow the prompts
+#      (links the EAS projectId + creates the Android keystore):
+#        npx eas-cli build --platform android --profile preview
+#      Commit the resulting app.json / eas.json changes.
+#   2. Create an access token at https://expo.dev/settings/access-tokens
+#      and add it as a repo secret named EXPO_TOKEN
+#      (Repo → Settings → Secrets and variables → Actions).
+
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK and publish release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build Android APK on EAS
+        run: eas build --platform android --profile preview --non-interactive --wait --json > build.json
+
+      - name: Download APK artifact
+        run: |
+          URL=$(jq -r '.artifacts.buildUrl // .[0].artifacts.buildUrl' build.json)
+          echo "APK URL: $URL"
+          curl -L --fail -o LocalLLM.apk "$URL"
+          ls -lh LocalLLM.apk
+
+      - name: Publish rolling 'latest' release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest LocalLLM.apk \
+            --title "Latest Android APK" \
+            --notes "Auto-built from ${{ github.sha }} on $(date -u +%Y-%m-%d). Install on a physical Android device — Expo Go is not supported."
+
+      - name: Upload APK as workflow artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalLLM-apk
+          path: LocalLLM.apk

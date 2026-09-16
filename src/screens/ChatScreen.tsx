@@ -5,10 +5,11 @@ import { useChat } from '../context/ChatContext';
 import { ChatMessage } from '../components/ChatMessage';
 import { ChatInput } from '../components/ChatInput';
 import { EmptyState } from '../components/EmptyState';
+import { ModelBanner } from '../components/ModelBanner';
 import { Colors } from '../theme/colors';
 import { Message } from '../types';
 
-export function ChatScreen() {
+export function ChatScreen({ onOpenModels }: { onOpenModels?: () => void }) {
   const {
     activeConversation,
     sendMessage,
@@ -41,6 +42,7 @@ export function ChatScreen() {
   if (messages.length === 0) {
     return (
       <Screen style={styles.container} edges={['bottom']}>
+        <ModelBanner onOpenModels={onOpenModels ?? (() => {})} />
         <EmptyState />
         <ChatInput onSend={handleSend} isGenerating={isGenerating} onStop={stopGenerating} />
       </Screen>
@@ -49,6 +51,7 @@ export function ChatScreen() {
 
   return (
     <Screen style={styles.container} edges={['bottom']}>
+      <ModelBanner onOpenModels={onOpenModels ?? (() => {})} />
       <FlatList
         ref={flatListRef}
         data={messages}

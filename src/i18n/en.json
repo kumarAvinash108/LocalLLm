@@ -23,9 +23,15 @@
     "previousDays": "Previous 7 Days",
     "older": "Older",
     "settings": "Settings",
+    "models": "Models",
     "noChats": "No chat history yet",
     "deleteChat": "Delete",
     "renameChat": "Rename"
+  },
+  "models": {
+    "title": "Models",
+    "loaded": "Loaded — ready to chat offline",
+    "manageHint": "Tap to download & load a model"
   },
   "settings": {
     "title": "Settings",

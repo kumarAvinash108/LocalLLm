@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { Conversation, Message } from '../types';
 import { Storage } from '../utils/storage';
+import { chatCompletion, isModelLoaded, stopCompletion } from '../services/llm';
 
 interface ChatState {
   conversations: Conversation[];
@@ -183,33 +184,65 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       try {
         abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
 
-        // Placeholder: This is where you will integrate the local inference engine.
-        // For now, simulate a streaming response.
-        const simulatedResponse = `This is a placeholder response. To connect a local LLM, integrate your inference engine (e.g., llama.cpp, MLX, ONNX Runtime) here.\n\nYou said: "${content}"`;
+        if (!isModelLoaded()) {
+          const noModelConv: Conversation = {
+            ...updatedConv,
+            messages: [
+              ...updatedConv.messages,
+              {
+                ...assistantMessage,
+                content:
+                  'No model is loaded yet.\n\nGo to Models (menu → Models), download a GGUF model from Hugging Face — e.g. Qwen 2.5 0.5B — then tap "Load in Chat" and ask again. Everything runs offline after the download.',
+              },
+            ],
+            updatedAt: Date.now(),
+          };
+          dispatch({ type: 'UPDATE_CONVERSATION', conversation: noModelConv });
+          Storage.saveConversation(noModelConv);
+          return;
+        }
+
+        const settings = await Storage.getSettings();
+        const history: Pick<Message, 'role' | 'content'>[] = [
+          ...updatedConv.messages.map((m) => ({ role: m.role, content: m.content })),
+        ];
 
         let accumulated = '';
-        for (let i = 0; i < simulatedResponse.length; i++) {
-          if (!abortControllerRef.current?.signal.aborted) {
-            accumulated += simulatedResponse[i];
-            const partialMsg: Message = {
-              ...assistantMessage,
-              content: accumulated,
-            };
-            const partialConv: Conversation = {
-              ...updatedConv,
-              messages: [...updatedConv.messages, partialMsg],
-              updatedAt: Date.now(),
-            };
-            dispatch({ type: 'UPDATE_CONVERSATION', conversation: partialConv });
-          }
-        }
+        let lastFlush = 0;
+        const flush = () => {
+          const partialConv: Conversation = {
+            ...updatedConv,
+            messages: [...updatedConv.messages, { ...assistantMessage, content: accumulated }],
+            updatedAt: Date.now(),
+          };
+          dispatch({ type: 'UPDATE_CONVERSATION', conversation: partialConv });
+        };
+
+        const fullText = await chatCompletion({
+          messages: history,
+          temperature: settings.temperature ?? 0.7,
+          maxTokens: settings.maxTokens ?? 512,
+          abortSignal: signal,
+          onToken: (token) => {
+            if (signal.aborted) return;
+            accumulated += token;
+            // Throttle re-renders: flush at most every ~120ms (plus final flush below).
+            const now = Date.now();
+            if (now - lastFlush > 120) {
+              lastFlush = now;
+              flush();
+            }
+          },
+        });
+        accumulated = fullText || accumulated;
 
         const finalConv: Conversation = {
           ...updatedConv,
           messages: [
             ...updatedConv.messages,
-            { ...assistantMessage, content: accumulated || simulatedResponse },
+            { ...assistantMessage, content: accumulated || '...' },
           ],
           updatedAt: Date.now(),
         };
@@ -217,19 +250,28 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         Storage.saveConversation(finalConv);
       } catch (error) {
         if ((error as Error).name !== 'AbortError') {
+          const message =
+            (error as Error).message === 'No model loaded. Download and load a model first.'
+              ? 'No model is loaded yet. Open Models, download a GGUF file, and tap "Load in Chat".'
+              : 'Something went wrong. Please try again.';
           const errorConv: Conversation = {
             ...updatedConv,
             messages: [
               ...updatedConv.messages,
               {
                 ...assistantMessage,
-                content: 'Something went wrong. Please try again.',
+                content: message,
               },
             ],
             updatedAt: Date.now(),
           };
           dispatch({ type: 'UPDATE_CONVERSATION', conversation: errorConv });
           Storage.saveConversation(errorConv);
+        } else {
+          // Stopped mid-stream: persist partial text if any was generated.
+          // (The last throttled flush already dispatched it; persist it.)
+          const partial = state.conversations.find((c) => c.id === convId);
+          if (partial) Storage.saveConversation(partial);
         }
       } finally {
         dispatch({ type: 'SET_GENERATING', generating: false });
@@ -241,6 +283,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const stopGenerating = useCallback(() => {
     abortControllerRef.current?.abort();
+    stopCompletion();
     dispatch({ type: 'SET_GENERATING', generating: false });
   }, []);
 

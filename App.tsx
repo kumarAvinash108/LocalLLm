@@ -19,22 +19,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import './src/i18n';
 import { ChatProvider, useChat } from './src/context/ChatContext';
+import { ModelProvider, useModel } from './src/context/ModelContext';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { ModelScreen } from './src/screens/ModelScreen';
 import { HistoryItem } from './src/components/HistoryItem';
 import { Colors } from './src/theme/colors';
 import { Conversation } from './src/types';
 
 const Stack = createNativeStackNavigator();
 
-function SidebarContent({ onNewChat, onSelectChat, onDeleteChat, onOpenSettings }: {
+function SidebarContent({ onNewChat, onSelectChat, onDeleteChat, onOpenSettings, onOpenModels }: {
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
   onOpenSettings: () => void;
+  onOpenModels: () => void;
 }) {
   const { t } = useTranslation();
   const { conversations, activeConversationId } = useChat();
+  const { activeModel, status } = useModel();
   const insets = useSafeAreaInsets();
 
   const now = Date.now();
@@ -87,6 +91,15 @@ function SidebarContent({ onNewChat, onSelectChat, onDeleteChat, onOpenSettings 
       </View>
 
       <View style={styles.drawerFooter}>
+        <TouchableOpacity style={styles.settingsButton} onPress={onOpenModels} activeOpacity={0.7}>
+          <Ionicons name="cloud-download-outline" size={20} color={Colors.dark.textSecondary} />
+          <Text style={styles.settingsText} numberOfLines={1}>
+            {status === 'ready' && activeModel ? activeModel.name : t('sidebar.models')}
+          </Text>
+          {status === 'ready' && activeModel && (
+            <View style={styles.dot} />
+          )}
+        </TouchableOpacity>
         <TouchableOpacity style={styles.settingsButton} onPress={onOpenSettings} activeOpacity={0.7}>
           <Ionicons name="settings-outline" size={20} color={Colors.dark.textSecondary} />
           <Text style={styles.settingsText}>{t('sidebar.settings')}</Text>
@@ -100,6 +113,7 @@ function MainScreen({ navigation }: { navigation: any }) {
   const { t } = useTranslation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { createNewChat, selectChat, deleteChat, activeConversation } = useChat();
+  const { status } = useModel();
 
   const isRTL = I18nManager.isRTL;
   const insets = useSafeAreaInsets();
@@ -130,6 +144,10 @@ function MainScreen({ navigation }: { navigation: any }) {
             closeDrawer();
             navigation.navigate('Settings');
           }}
+          onOpenModels={() => {
+            closeDrawer();
+            navigation.navigate('Models');
+          }}
         />
       )}>
       <View style={styles.root}>
@@ -144,9 +162,18 @@ function MainScreen({ navigation }: { navigation: any }) {
           <Text style={styles.headerTitle} numberOfLines={1}>
             {activeConversation?.title ?? t('app.name')}
           </Text>
-          <View style={styles.headerSpacer} />
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => navigation.navigate('Models')}
+            activeOpacity={0.7}>
+            <Ionicons
+              name="hardware-chip-outline"
+              size={22}
+              color={status === 'ready' ? Colors.dark.success : Colors.dark.warning}
+            />
+          </TouchableOpacity>
         </View>
-        <ChatScreen />
+        <ChatScreen onOpenModels={() => navigation.navigate('Models')} />
       </View>
     </Drawer>
   );
@@ -158,6 +185,22 @@ function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainScreen} />
+      <Stack.Screen
+        name="Models"
+        component={ModelScreen}
+        options={{
+          headerShown: true,
+          headerTitle: t('models.title'),
+          headerStyle: {
+            backgroundColor: Colors.dark.background,
+          },
+          headerTintColor: Colors.dark.text,
+          headerTitleStyle: {
+            fontWeight: '600',
+          },
+          headerBackTitle: '',
+        }}
+      />
       <Stack.Screen
         name="Settings"
         component={SettingsScreen}
@@ -181,28 +224,30 @@ function RootNavigator() {
 export default function App() {
   return (
     <GestureHandlerRootView style={styles.gestureRoot}>
-      <ChatProvider>
-        <NavigationContainer
-        theme={{
-          dark: true,
-          colors: {
-            primary: Colors.dark.primary,
-            background: Colors.dark.background,
-            card: Colors.dark.surface,
-            text: Colors.dark.text,
-            border: Colors.dark.border,
-            notification: Colors.dark.primary,
-          },
-          fonts: {
-            regular: { fontFamily: 'System', fontWeight: '400' },
-            medium: { fontFamily: 'System', fontWeight: '500' },
-            bold: { fontFamily: 'System', fontWeight: '700' },
-            heavy: { fontFamily: 'System', fontWeight: '900' },
-          },
-        }}>
-          <RootNavigator />
-        </NavigationContainer>
-      </ChatProvider>
+      <ModelProvider>
+        <ChatProvider>
+          <NavigationContainer
+            theme={{
+              dark: true,
+              colors: {
+                primary: Colors.dark.primary,
+                background: Colors.dark.background,
+                card: Colors.dark.surface,
+                text: Colors.dark.text,
+                border: Colors.dark.border,
+                notification: Colors.dark.primary,
+              },
+              fonts: {
+                regular: { fontFamily: 'System', fontWeight: '400' },
+                medium: { fontFamily: 'System', fontWeight: '500' },
+                bold: { fontFamily: 'System', fontWeight: '700' },
+                heavy: { fontFamily: 'System', fontWeight: '900' },
+              },
+            }}>
+            <RootNavigator />
+          </NavigationContainer>
+        </ChatProvider>
+      </ModelProvider>
     </GestureHandlerRootView>
   );
 }
@@ -306,5 +351,12 @@ const styles = StyleSheet.create({
   settingsText: {
     fontSize: 14,
     color: Colors.dark.textSecondary,
+    flex: 1,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.dark.success,
   },
 });

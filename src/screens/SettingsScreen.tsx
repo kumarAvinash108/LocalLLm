@@ -13,6 +13,7 @@ import { Screen } from '../components/Screen';
 import { Colors } from '../theme/colors';
 import { Storage } from '../utils/storage';
 import { Settings } from '../types';
+import { useModel } from '../context/ModelContext';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -26,6 +27,7 @@ interface SettingsScreenProps {
 
 export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const { t, i18n } = useTranslation();
+  const { activeModel, status } = useModel();
   const [settings, setSettings] = useState<Settings>({
     language: 'en',
     modelName: 'local-model',
@@ -86,10 +88,21 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('settings.model')}</Text>
-        <View style={styles.modelInfo}>
+        <TouchableOpacity
+          style={styles.modelInfo}
+          onPress={() => navigation.navigate('Models')}
+          activeOpacity={0.7}>
           <Ionicons name="hardware-chip-outline" size={20} color={Colors.dark.textSecondary} />
-          <Text style={styles.modelName}>{settings.modelName}</Text>
-        </View>
+          <View style={styles.modelTextWrap}>
+            <Text style={styles.modelName} numberOfLines={1}>
+              {activeModel?.name ?? settings.modelName}
+            </Text>
+            <Text style={styles.modelSub}>
+              {status === 'ready' ? t('models.loaded') : t('models.manageHint')}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={Colors.dark.textTertiary} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -161,6 +174,15 @@ const styles = StyleSheet.create({
   modelName: {
     fontSize: 15,
     color: Colors.dark.textSecondary,
+    flex: 1,
+  },
+  modelTextWrap: {
+    flex: 1,
+  },
+  modelSub: {
+    fontSize: 12,
+    color: Colors.dark.textTertiary,
+    marginTop: 2,
   },
   aboutRow: {
     flexDirection: 'row',

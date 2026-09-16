@@ -1,11 +1,7 @@
 import React, { useState, useRef } from 'react';
-import {
-  View,
-  TextInput,
-  StyleSheet,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-} from 'react-native';
+import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 
@@ -19,6 +15,7 @@ interface ChatInputProps {
 export function ChatInput({ onSend, disabled, onStop, isGenerating }: ChatInputProps) {
   const [text, setText] = useState('');
   const inputRef = useRef<TextInput>(null);
+  const insets = useSafeAreaInsets();
 
   const handleSend = () => {
     const trimmed = text.trim();
@@ -29,9 +26,8 @@ export function ChatInput({ onSend, disabled, onStop, isGenerating }: ChatInputP
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
-      keyboardVerticalOffset={0}
+    <KeyboardStickyView
+      offset={{ closed: 0, opened: -insets.bottom }}
       style={styles.wrapper}>
       <View style={styles.container}>
         <View style={styles.inputContainer}>
@@ -76,7 +72,7 @@ export function ChatInput({ onSend, disabled, onStop, isGenerating }: ChatInputP
           <Ionicons name="information-circle" size={12} color={Colors.dark.textTertiary} />
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardStickyView>
   );
 }
 

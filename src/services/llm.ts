@@ -66,13 +66,23 @@ export async function loadModel(opts: LoadOptions): Promise<LlamaContext> {
   await unloadModel();
 
   loadedModelId = opts.modelId;
+  // llama.cpp reports progress as 0..1; normalize to 0..100 for the UI.
+  const normalize = opts.onProgress
+    ? (p: number) => {
+        try {
+          opts.onProgress!(p <= 1 ? p * 100 : p);
+        } catch {
+          // ignore UI callback errors
+        }
+      }
+    : undefined;
   loadPromise = initLlama(
     {
       model: opts.modelPath,
       n_ctx: opts.nCtx ?? 2048,
       n_threads: opts.nThreads,
     },
-    opts.onProgress,
+    normalize,
   ).then((ctx) => {
     context = ctx;
     return ctx;
@@ -133,8 +143,10 @@ export function translateNativeError(e: unknown): Error {
     /JSI bindings not installed/i.test(message) ||
     /RNLlama/i.test(message)
   ) {
-    return new Error(NATIVE_MODULE_MISSING_MESSAGE);
+    return new Error(`${NATIVE_MODULE_MISSING_MESSAGE} (native: ${message})`);
   }
+  // Preserve the native message — release builds give no logcat to the user,
+  // so the alert text is the only diagnostic. Never swallow it.
   return e instanceof Error ? e : new Error(message);
 }
 

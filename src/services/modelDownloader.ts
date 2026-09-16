@@ -64,13 +64,27 @@ export async function downloadModel(
   const url = buildDownloadUrl(model.repo, model.file);
 
   // If a complete file already exists, report full progress and finish.
+  // Guard against partial/corrupt files: a previous cancelled download can
+  // leave a few MB behind, which must NOT count as "downloaded" or the user
+  // gets stuck (download is skipped, load then fails).
   const existing = await FileSystem.getInfoAsync(fileUri);
   if (existing.exists && 'size' in existing && (existing.size ?? 0) > 1024 * 1024) {
-    onProgress?.(1, existing.size ?? 0, existing.size ?? 0);
-    return {
-      cancel: async () => {},
-      done: Promise.resolve(fileUri),
-    };
+    const existingSize = existing.size ?? 0;
+    const expectedBytes = model.sizeMB > 0 ? model.sizeMB * 1024 * 1024 * 0.9 : 0;
+    if (expectedBytes > 0 && existingSize < expectedBytes) {
+      // Partial file — delete so the download below starts fresh.
+      try {
+        await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      } catch {
+        // ignore cleanup errors
+      }
+    } else {
+      onProgress?.(1, existingSize, existingSize);
+      return {
+        cancel: async () => {},
+        done: Promise.resolve(fileUri),
+      };
+    }
   }
 
   const resumable = createResumable(url, fileUri, onProgress);
@@ -116,7 +130,7 @@ export async function downloadModel(
 
 /** Byte size of a downloaded model, or null if not present. */
 export async function getDownloadedSize(modelId: string): Promise<number | null> {
-  const uri = `${getModelsDirectory()}${modelId}.gguf`;
+  const uri = localUriForModel({ id: modelId });
   try {
     const info = await FileSystem.getInfoAsync(uri);
     if (info.exists && 'size' in info) return info.size ?? null;
@@ -124,6 +138,50 @@ export async function getDownloadedSize(modelId: string): Promise<number | null>
   } catch {
     return null;
   }
+}
+
+/**
+ * Release builds can have a different documentDirectory than the one stored
+ * at download time (reinstall, update, backup restore — especially iOS).
+ * Never trust a persisted localUri: always recompute the current path.
+ */
+export function resolveModelUri(modelId: string): string {
+  return localUriForModel({ id: modelId });
+}
+
+/**
+ * Size-only validation via getInfoAsync (never reads file content).
+ *
+ * NOTE: do NOT use readAsStringAsync on the .gguf here — the legacy
+ * ExponentFileSystem ignores position/length on Android and tries to load
+ * the entire ~400MB file into a JS string, which throws OutOfMemoryError
+ * on low-RAM devices. Size + extension checks catch truncations and HTML
+ * error pages (KBs) without touching file contents.
+ */
+export async function validateGgufFile(
+  fileUri: string,
+  minBytes = 10 * 1024 * 1024,
+): Promise<{ ok: boolean; reason?: string; size?: number }> {
+  let info;
+  try {
+    info = await FileSystem.getInfoAsync(fileUri);
+  } catch (e) {
+    return { ok: false, reason: `Cannot stat model file: ${(e as Error).message}` };
+  }
+  if (!info.exists) {
+    return { ok: false, reason: 'Model file not found. Please re-download it.' };
+  }
+  const size = 'size' in info ? info.size ?? 0 : 0;
+  if (size < minBytes) {
+    return {
+      ok: false,
+      size,
+      reason:
+        `Model file looks incomplete (${(size / 1048576).toFixed(1)} MB). ` +
+        `Delete it and download again on a stable connection.`,
+    };
+  }
+  return { ok: true, size };
 }
 
 export async function isModelDownloaded(modelId: string): Promise<boolean> {

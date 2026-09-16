@@ -16,6 +16,8 @@ import {
   getDownloadedSize,
   isModelDownloaded,
   localUriForModel,
+  resolveModelUri,
+  validateGgufFile,
   type DownloadHandle,
 } from '../services/modelDownloader';
 import { loadModel as nativeLoadModel, unloadModel as nativeUnload } from '../services/llm';
@@ -137,8 +139,26 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
         setError(msg);
         throw new Error(msg);
       }
+      // Always recompute the path for this install — a persisted localUri
+      // can be stale after reinstall/update (documentDirectory changes).
+      const freshUri = resolveModelUri(modelId);
       if (!(await isModelDownloaded(modelId))) {
         const msg = 'Model file is missing on disk. Please re-download it.';
+        setError(msg);
+        await refresh();
+        throw new Error(msg);
+      }
+      // Catch corrupt/truncated downloads before the native loader sees them,
+      // so the user gets "re-download" instead of a cryptic native error.
+      // Threshold: at least 10MB and at most the smaller of 50% of the
+      // advertised size (when known) — small enough to catch truncations,
+      // large enough to tolerate size rounding.
+      const minBytes = entry.sizeMB
+        ? Math.min(entry.sizeMB * 1024 * 1024 * 0.5, 10 * 1024 * 1024)
+        : 10 * 1024 * 1024;
+      const check = await validateGgufFile(freshUri, minBytes);
+      if (!check.ok) {
+        const msg = check.reason ?? 'Model file is invalid. Please re-download it.';
         setError(msg);
         await refresh();
         throw new Error(msg);
@@ -149,9 +169,19 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
       try {
         await nativeLoadModel({
           modelId: entry.id,
-          modelPath: entry.localUri,
+          modelPath: freshUri,
           nCtx: 2048,
-          onProgress: (p) => setLoadProgress(p),
+          onProgress: (p) => setLoadProgress(p <= 1 ? p * 100 : p),
+        });
+        // Persist the fresh path so the next cold start uses a valid URI.
+        const bytes = check.size ?? (await getDownloadedSize(modelId)) ?? undefined;
+        const updatedEntry = { ...entry, localUri: freshUri, bytesOnDisk: bytes };
+        setDownloaded((prev) => {
+          const next = prev.some((m) => m.id === modelId)
+            ? prev.map((m) => (m.id === modelId ? updatedEntry : m))
+            : [updatedEntry, ...prev];
+          Storage.saveDownloadedModels(next);
+          return next;
         });
         await Storage.setActiveModelId(entry.id);
         setActiveModelId(entry.id);
@@ -161,10 +191,15 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
         });
         setStatus('ready');
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Failed to load model.';
+        const raw = e instanceof Error ? e.message : 'Failed to load model.';
+        const sizeMB =
+          check.size != null ? ` (${(check.size / 1048576).toFixed(0)} MB on disk)` : '';
+        const msg = /Failed to load|load model|GGUF|memory|mmap|file/i.test(raw)
+          ? `${raw}${sizeMB} If the file is corrupt, delete and re-download it.`
+          : raw;
         setError(msg);
         setStatus('error');
-        throw e;
+        throw e instanceof Error ? new Error(msg) : new Error(msg);
       }
     },
     [downloaded, refresh],

@@ -2,6 +2,9 @@
   "expo": {
     "name": "LocalLLM",
     "slug": "LocalLLM",
+    "description": "Chat with open-weight LLMs fully on-device. Download a GGUF model once, then chat offline.",
+    "scheme": "localllm",
+    "githubUrl": "https://github.com/kumarAvinash108/LocalLLm",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,6 +15,13 @@
     },
     "android": {
       "package": "com.kumaravinash108.localllm",
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "allowBackup": true,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

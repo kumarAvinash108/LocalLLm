@@ -4,9 +4,10 @@
 #   - every push to main (including merged PRs) → always builds the
 #     `preview` profile (installable APK, rolling `latest` release)
 #   - manually via "Run workflow" in the Actions tab → you pick the
-#     profile: `preview` (APK) or `production` (AAB for Play Store).
-#     The `production` build ONLY runs when triggered manually here —
-#     pushes to main never build it.
+#     profile: `preview` (APK), `uptodown` (signed store APK for Uptodown),
+#     or `production` (AAB for Play Store).
+#     The `uptodown` / `production` builds ONLY run when triggered manually —
+#     pushes to main never build them.
 #
 # One-time setup ( Maintainer only ):
 #   1. Create an Expo account, then run once locally and follow the prompts
@@ -31,6 +32,7 @@ on:
         type: choice
         options:
           - preview
+          - uptodown
           - production
 
 jobs:
@@ -95,6 +97,16 @@ jobs:
           gh release create latest LocalLLM.apk \
             --title "Latest Android APK" \
             --notes "Auto-built (preview profile) from ${{ github.sha }} on $(date -u +%Y-%m-%d). Install on a physical Android device — Expo Go is not supported."
+
+      - name: Publish rolling 'uptodown' release (signed store APK for Uptodown)
+        if: env.PROFILE == 'uptodown'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete uptodown --cleanup-tag --yes || true
+          gh release create uptodown LocalLLM.apk \
+            --title "Uptodown Android APK" \
+            --notes "Signed store APK (uptodown profile) from ${{ github.sha }} on $(date -u +%Y-%m-%d). Upload this APK to the Uptodown Developers Console. Package: com.kumaravinash108.localllm — versionCode must increase on every update."
 
       - name: Publish rolling 'production' release (production AAB)
         if: env.PROFILE == 'production'

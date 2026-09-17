@@ -1,9 +1,12 @@
-# Builds the Android APK on EAS and publishes it to a rolling
-# `latest` GitHub Release, so anyone can download and install it.
+# Builds the Android app on EAS and publishes it to a GitHub Release.
 #
 # Triggers:
-#   - every push to main (including merged PRs)
-#   - manually via "Run workflow" in the Actions tab
+#   - every push to main (including merged PRs) → always builds the
+#     `preview` profile (installable APK, rolling `latest` release)
+#   - manually via "Run workflow" in the Actions tab → you pick the
+#     profile: `preview` (APK) or `production` (AAB for Play Store).
+#     The `production` build ONLY runs when triggered manually here —
+#     pushes to main never build it.
 #
 # One-time setup ( Maintainer only ):
 #   1. Create an Expo account, then run once locally and follow the prompts
@@ -20,13 +23,25 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
 
 jobs:
   build:
-    name: Build APK and publish release
+    name: Build Android app and publish release
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # Manual runs use the chosen profile; pushes always use preview.
+      PROFILE: ${{ github.event.inputs.profile || 'preview' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,11 +61,13 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build Android APK on EAS
-        run: eas build --platform android --profile preview --non-interactive --wait --json > build.json
+      - name: Build on EAS
+        run: eas build --platform android --profile "$PROFILE" --non-interactive --wait --json > build.json
 
-      - name: Download APK artifact
+      - name: Download build artifact
+        id: artifact
         run: |
+          echo "=== profile: $PROFILE ==="
           echo "=== build.json preview ==="
           head -c 5000 build.json; echo
           URL=$(jq -r 'if type == "array" then .[0] else . end | .artifacts.applicationArchiveUrl // .artifacts.buildUrl // empty' build.json)
@@ -59,21 +76,38 @@ jobs:
             jq . build.json
             exit 1
           fi
-          echo "APK URL: $URL"
-          curl -L --fail -o LocalLLM.apk "$URL"
-          ls -lh LocalLLM.apk
+          if [ "$PROFILE" = "production" ]; then
+            FILE=LocalLLM.aab
+          else
+            FILE=LocalLLM.apk
+          fi
+          echo "Artifact URL: $URL"
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+          curl -L --fail -o "$FILE" "$URL"
+          ls -lh "$FILE"
 
-      - name: Publish rolling 'latest' release
+      - name: Publish rolling 'latest' release (preview APK)
+        if: env.PROFILE == 'preview'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete latest --cleanup-tag --yes || true
           gh release create latest LocalLLM.apk \
             --title "Latest Android APK" \
-            --notes "Auto-built from ${{ github.sha }} on $(date -u +%Y-%m-%d). Install on a physical Android device — Expo Go is not supported."
+            --notes "Auto-built (preview profile) from ${{ github.sha }} on $(date -u +%Y-%m-%d). Install on a physical Android device — Expo Go is not supported."
 
-      - name: Upload APK as workflow artifact (backup)
+      - name: Publish rolling 'production' release (production AAB)
+        if: env.PROFILE == 'production'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete production --cleanup-tag --yes || true
+          gh release create production LocalLLM.aab \
+            --title "Production Android AAB" \
+            --notes "Manually triggered production build from ${{ github.sha }} on $(date -u +%Y-%m-%d). Upload this AAB to the Play Console."
+
+      - name: Upload build as workflow artifact (backup)
         uses: actions/upload-artifact@v4
         with:
-          name: LocalLLM-apk
-          path: LocalLLM.apk
+          name: LocalLLM-${{ env.PROFILE }}
+          path: ${{ steps.artifact.outputs.file }}

@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
@@ -26,9 +25,7 @@ export function ChatInput({ onSend, disabled, onStop, isGenerating }: ChatInputP
   };
 
   return (
-    <KeyboardStickyView
-      offset={{ closed: 0, opened: -insets.bottom }}
-      style={styles.wrapper}>
+    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       <View style={styles.container}>
         <View style={styles.inputContainer}>
           <TextInput
@@ -72,7 +69,7 @@ export function ChatInput({ onSend, disabled, onStop, isGenerating }: ChatInputP
           <Ionicons name="information-circle" size={12} color={Colors.dark.textTertiary} />
         </View>
       </View>
-    </KeyboardStickyView>
+    </View>
   );
 }
 

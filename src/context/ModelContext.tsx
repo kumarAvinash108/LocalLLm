@@ -13,7 +13,9 @@ import { Storage } from '../utils/storage';
 import {
   deleteDownloadedModel,
   downloadModel,
+  downloadModelFromUrl,
   getDownloadedSize,
+  importGgufFile,
   isModelDownloaded,
   localUriForModel,
   resolveModelUri,
@@ -38,6 +40,10 @@ interface ModelContextValue {
   isReady: boolean;
   download: (model: ModelInfo) => Promise<void>;
   cancelDownload: () => Promise<void>;
+  /** Copy a user-picked .gguf (file manager) into the library. */
+  importFromDevice: (sourceUri: string, fileName: string) => Promise<void>;
+  /** Download a .gguf from a direct https:// URL (e.g. GitHub release asset). */
+  downloadFromUrl: (url: string, displayName: string) => Promise<void>;
   load: (modelId: string) => Promise<void>;
   unload: () => Promise<void>;
   remove: (modelId: string) => Promise<void>;
@@ -128,6 +134,69 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
   const cancelDownload = useCallback(async () => {
     await handleRef.current?.cancel();
   }, []);
+
+  const registerEntry = useCallback(async (model: ModelInfo, uri: string) => {
+    const bytes = await getDownloadedSize(model.id);
+    const entry: DownloadedModel = {
+      ...model,
+      localUri: uri,
+      bytesOnDisk: bytes ?? undefined,
+    };
+    setDownloaded((prev) => {
+      const next = [entry, ...prev.filter((m) => m.id !== model.id)];
+      Storage.saveDownloadedModels(next);
+      return next;
+    });
+    // Auto-activate the first ever downloaded model.
+    const currentActive = await Storage.getActiveModelId();
+    if (!currentActive) {
+      await Storage.setActiveModelId(model.id);
+      setActiveModelId(model.id);
+    }
+  }, []);
+
+  const importFromDevice = useCallback(
+    async (sourceUri: string, fileName: string) => {
+      setError(null);
+      try {
+        const { model, localUri } = await importGgufFile(sourceUri, fileName);
+        await registerEntry(model, localUri);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Import failed.';
+        setError(msg);
+        throw e instanceof Error ? e : new Error(msg);
+      }
+    },
+    [registerEntry],
+  );
+
+  const downloadFromUrl = useCallback(
+    async (url: string, displayName: string) => {
+      if (handleRef.current) return; // one download at a time
+      setError(null);
+      setStatus('downloading');
+      setDownloadProgress(0);
+      try {
+        const { handle, model } = await downloadModelFromUrl(url, displayName, (fraction) => {
+          setDownloadProgress(fraction);
+        });
+        setDownloadingId(model.id);
+        handleRef.current = handle;
+        const uri = await handle.done;
+        await registerEntry(model, uri);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Download failed.';
+        if (msg !== 'Download cancelled.') setError(msg);
+        throw e;
+      } finally {
+        handleRef.current = null;
+        setDownloadingId(null);
+        setDownloadProgress(0);
+        setStatus((s) => (s === 'downloading' ? 'idle' : s));
+      }
+    },
+    [registerEntry],
+  );
 
   const load = useCallback(
     async (modelId: string) => {
@@ -247,6 +316,8 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
     isReady: status === 'ready',
     download,
     cancelDownload,
+    importFromDevice,
+    downloadFromUrl,
     load,
     unload,
     remove,

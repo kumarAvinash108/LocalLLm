@@ -16,6 +16,18 @@ export function localUriForModel(model: Pick<ModelInfo, 'id'>): string {
   return `${getModelsDirectory()}${model.id}.gguf`;
 }
 
+/** Sanitize an arbitrary filename into a safe stable model id. */
+export function modelIdFromFileName(fileName: string): string {
+  return (
+    fileName
+      .toLowerCase()
+      .replace(/\.gguf$/i, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'imported-model'
+  );
+}
+
 async function ensureModelsDir(): Promise<void> {
   const dir = getModelsDirectory();
   const info = await FileSystem.getInfoAsync(dir);
@@ -125,6 +137,128 @@ export async function downloadModel(
       }
     },
     done,
+  };
+}
+
+/**
+ * Copy a .gguf file the user picked (file manager / Downloads folder)
+ * into the app's private model library.
+ *
+ * Returns the stored ModelInfo entry. The source URI may live in a
+ * cache location that the OS can clear, so always copy — never reference.
+ */
+export async function importGgufFile(
+  sourceUri: string,
+  fileName: string,
+): Promise<{ model: ModelInfo; localUri: string }> {
+  if (!/\.gguf$/i.test(fileName)) {
+    throw new Error('That file is not a .gguf model. Pick a file ending in .gguf.');
+  }
+  await ensureModelsDir();
+  const id = modelIdFromFileName(fileName);
+  const destUri = localUriForModel({ id });
+  const existing = await FileSystem.getInfoAsync(destUri);
+  if (existing.exists) {
+    try {
+      await FileSystem.deleteAsync(destUri, { idempotent: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+  await FileSystem.copyAsync({ from: sourceUri, to: destUri });
+  const check = await validateGgufFile(destUri);
+  if (!check.ok) {
+    try {
+      await FileSystem.deleteAsync(destUri, { idempotent: true });
+    } catch {
+      // ignore cleanup errors
+    }
+    throw new Error(check.reason ?? 'That .gguf file looks invalid or incomplete.');
+  }
+  const model: ModelInfo = {
+    id,
+    name: fileName,
+    repo: 'local-import',
+    file: fileName,
+    sizeMB: check.size ? Math.round(check.size / 1048576) : 0,
+    description: 'Imported from device storage.',
+    license: 'Check the source license before use',
+  };
+  return { model, localUri: destUri };
+}
+
+/**
+ * Download a .gguf from any direct https:// URL — e.g. a GitHub release
+ * asset (https://github.com/<owner>/<repo>/releases/download/…/*.gguf).
+ * Use the raw/redirect-following URL, not an HTML page URL.
+ */
+export async function downloadModelFromUrl(
+  url: string,
+  displayName: string,
+  onProgress?: (fraction: number, written: number, total: number) => void,
+): Promise<{ handle: DownloadHandle; model: ModelInfo }> {
+  const trimmed = url.trim();
+  if (!/^https:\/\//i.test(trimmed)) {
+    throw new Error('Enter a direct https:// link to a .gguf file.');
+  }
+  const baseName = trimmed.split('?')[0].split('/').pop() ?? '';
+  if (!/\.gguf$/i.test(baseName)) {
+    throw new Error('That URL does not point to a .gguf file. It must end in .gguf.');
+  }
+  await ensureModelsDir();
+  const name = displayName.trim() || baseName;
+  const id = modelIdFromFileName(baseName);
+  const fileUri = localUriForModel({ id });
+
+  const resumable = createResumable(trimmed, fileUri, onProgress);
+  let cancelled = false;
+
+  const done = (async () => {
+    try {
+      const result = await resumable.downloadAsync();
+      if (!result || result.status < 200 || result.status >= 300) {
+        try {
+          await FileSystem.deleteAsync(fileUri, { idempotent: true });
+        } catch {
+          // ignore cleanup errors
+        }
+        throw new Error(
+          result
+            ? `Download failed with HTTP ${result.status}. For GitHub releases, use the direct .../releases/download/... URL.`
+            : 'Download failed. Check your connection and retry.',
+        );
+      }
+      return result.uri;
+    } catch (e) {
+      if (cancelled) {
+        throw new Error('Download cancelled.');
+      }
+      throw e instanceof Error ? e : new Error('Download failed.');
+    }
+  })();
+
+  const model: ModelInfo = {
+    id,
+    name,
+    repo: 'direct-url',
+    file: baseName,
+    sizeMB: 0,
+    description: `Downloaded from direct URL. Source: ${trimmed.slice(0, 80)}`,
+    license: 'Check the source license before use',
+  };
+  return {
+    model,
+    handle: {
+      cancel: async () => {
+        cancelled = true;
+        try {
+          await resumable.cancelAsync();
+        } catch {
+          // cancel may throw if already finished — safe to ignore
+        }
+      },
+      done,
+    },
   };
 }
 

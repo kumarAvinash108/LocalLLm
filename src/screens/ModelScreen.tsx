@@ -8,8 +8,11 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { Screen } from '../components/Screen';
 import { Colors } from '../theme/colors';
 import { useModel } from '../context/ModelContext';
@@ -121,14 +124,19 @@ export function ModelScreen({ navigation }: { navigation: any }) {
     error,
     download,
     cancelDownload,
+    importFromDevice,
+    downloadFromUrl,
     load,
     remove,
   } = useModel();
 
   const [customRepo, setCustomRepo] = useState('');
   const [customFile, setCustomFile] = useState('');
+  const [directUrl, setDirectUrl] = useState('');
+  const [directName, setDirectName] = useState('');
   const [browsing, setBrowsing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const downloadedIds = new Set(downloaded.map((d) => d.id));
 
@@ -197,9 +205,62 @@ export function ModelScreen({ navigation }: { navigation: any }) {
     setCustomFile('');
   };
 
+  const handleImportFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const picked = result.assets[0];
+      const name = picked.name ?? picked.uri.split('/').pop() ?? 'model.gguf';
+      if (!/\.gguf$/i.test(name)) {
+        Alert.alert('Not a .gguf file', 'Please pick a file ending in .gguf.');
+        return;
+      }
+      setImporting(true);
+      try {
+        await importFromDevice(picked.uri, name);
+        Alert.alert('Imported', `${name} is ready — tap "Load in Chat".`);
+      } catch (e) {
+        Alert.alert('Import failed', (e as Error).message);
+      } finally {
+        setImporting(false);
+      }
+    } catch (e) {
+      Alert.alert('Import failed', (e as Error).message);
+    }
+  };
+
+  const handleDirectUrlDownload = async () => {
+    if (!directUrl.trim()) {
+      Alert.alert('Check inputs', 'Paste a direct https:// link to a .gguf file.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await downloadFromUrl(directUrl.trim(), directName.trim());
+      Alert.alert('Downloaded', 'Model is ready — tap "Load in Chat".');
+      setDirectUrl('');
+      setDirectName('');
+    } catch (e) {
+      if ((e as Error).message !== 'Download cancelled.') {
+        Alert.alert('Download failed', (e as Error).message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Screen style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView
+        style={styles.avoider}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled">
         <Text style={styles.sectionTitle}>On-device models (.gguf)</Text>
         <Text style={styles.hint}>
           Models download from Hugging Face over the network, then run fully offline with llama.rn.
@@ -210,6 +271,14 @@ export function ModelScreen({ navigation }: { navigation: any }) {
           <View style={styles.statusBox}>
             <ActivityIndicator size="small" color={Colors.dark.primary} />
             <Text style={styles.statusText}>Loading weights… {Math.round(loadProgress)}%</Text>
+          </View>
+        )}
+        {downloadingId && (
+          <View style={styles.statusBox}>
+            <ActivityIndicator size="small" color={Colors.dark.primary} />
+            <Text style={styles.statusText}>
+              Downloading… {Math.round(downloadProgress * 100)}%
+            </Text>
           </View>
         )}
         {error && (
@@ -297,13 +366,67 @@ export function ModelScreen({ navigation }: { navigation: any }) {
             </TouchableOpacity>
           </View>
         </View>
+
+        <Text style={styles.sectionTitle}>Import .gguf from device</Text>
+        <View style={styles.customBox}>
+          <Text style={styles.hint}>
+            Already have a .gguf in Downloads or another app? Pick it with the file manager and
+            it will be copied into the app — no re-download needed.
+          </Text>
+          <TouchableOpacity
+            style={[styles.primaryBtn, importing && styles.disabledBtn]}
+            onPress={handleImportFile}
+            disabled={importing}>
+            <Ionicons name="folder-open-outline" size={16} color="#fff" />
+            <Text style={styles.primaryText}>
+              {importing ? 'Importing…' : 'Pick .gguf file'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.sectionTitle}>Download from direct URL</Text>
+        <View style={styles.customBox}>
+          <Text style={styles.label}>Direct .gguf URL (https://)</Text>
+          <TextInput
+            style={styles.input}
+            value={directUrl}
+            onChangeText={setDirectUrl}
+            placeholder="https://github.com/.../releases/download/.../model.gguf"
+            placeholderTextColor={Colors.dark.textTertiary}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={styles.label}>Display name (optional)</Text>
+          <TextInput
+            style={styles.input}
+            value={directName}
+            onChangeText={setDirectName}
+            placeholder="My 1B model"
+            placeholderTextColor={Colors.dark.textTertiary}
+          />
+          <Text style={styles.repoHint}>
+            Works with GitHub release assets and any direct file link. Paste the raw download URL
+            (it must end in .gguf) — not a repo or HTML page URL.
+          </Text>
+          <View style={styles.customActions}>
+            <TouchableOpacity
+              style={[styles.primaryBtn, busy && styles.disabledBtn]}
+              onPress={handleDirectUrlDownload}
+              disabled={busy}>
+              <Ionicons name="cloud-download-outline" size={16} color="#fff" />
+              <Text style={styles.primaryText}>Download URL</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
+  avoider: { flex: 1 },
   content: { padding: 16, paddingBottom: 40 },
   sectionTitle: {
     fontSize: 13,

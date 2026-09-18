@@ -10,6 +10,7 @@ import {
   I18nManager,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { Drawer } from 'react-native-drawer-layout';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -224,6 +225,7 @@ function RootNavigator() {
 export default function App() {
   return (
     <GestureHandlerRootView style={styles.gestureRoot}>
+      <KeyboardProvider>
       <ModelProvider>
         <ChatProvider>
           <NavigationContainer
@@ -248,6 +250,7 @@ export default function App() {
           </NavigationContainer>
         </ChatProvider>
       </ModelProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

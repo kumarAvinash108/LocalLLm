@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
-import { FlatList, StyleSheet, Keyboard } from 'react-native';
+import { FlatList, StyleSheet, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Screen } from '../components/Screen';
 import { useChat } from '../context/ChatContext';
 import { ChatMessage } from '../components/ChatMessage';
@@ -29,7 +30,6 @@ export function ChatScreen({ onOpenModels }: { onOpenModels?: () => void }) {
   }, [messages.length, messages[messages.length - 1]?.content]);
 
   const handleSend = (text: string) => {
-    Keyboard.dismiss();
     sendMessage(text);
   };
 
@@ -39,30 +39,34 @@ export function ChatScreen({ onOpenModels }: { onOpenModels?: () => void }) {
 
   const keyExtractor = (item: Message) => item.id;
 
-  if (messages.length === 0) {
-    return (
-      <Screen style={styles.container} edges={['bottom']}>
-        <ModelBanner onOpenModels={onOpenModels ?? (() => {})} />
-        <EmptyState />
-        <ChatInput onSend={handleSend} isGenerating={isGenerating} onStop={stopGenerating} />
-      </Screen>
-    );
-  }
-
   return (
     <Screen style={styles.container} edges={['bottom']}>
       <ModelBanner onOpenModels={onOpenModels ?? (() => {})} />
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.messageList}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-      />
-      <ChatInput onSend={handleSend} isGenerating={isGenerating} onStop={stopGenerating} />
+      <KeyboardAvoidingView
+        style={styles.avoider}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
+        {messages.length === 0 ? (
+          <>
+            <EmptyState />
+            <ChatInput onSend={handleSend} isGenerating={isGenerating} onStop={stopGenerating} />
+          </>
+        ) : (
+          <>
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderItem}
+              keyExtractor={keyExtractor}
+              contentContainerStyle={styles.messageList}
+              keyboardDismissMode="interactive"
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            />
+            <ChatInput onSend={handleSend} isGenerating={isGenerating} onStop={stopGenerating} />
+          </>
+        )}
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -71,6 +75,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.dark.background,
+  },
+  avoider: {
+    flex: 1,
   },
   messageList: {
     paddingTop: 8,

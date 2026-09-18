@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/icon.png" width="120" alt="LocalLLM app icon" />
+</p>
+
 # LocalLLM — Offline LLM Chat (Expo + llama.rn)
 
 [![Android APK](https://github.com/kumarAvinash108/LocalLLm/actions/workflows/android-apk.yml/badge.svg)](https://github.com/kumarAvinash108/LocalLLm/actions/workflows/android-apk.yml)

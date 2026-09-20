@@ -21,7 +21,7 @@ CI pipeline (auto-built APK on every `main` push) healthy.
 
 ## Prerequisites
 
-- Node 22+, npm
+- Node 20+, npm
 - Android Studio (Android) and/or Xcode (iOS) for native builds
 - An Expo account (only needed to run EAS builds, not for local dev builds)
 - A physical device for serious testing (emulators work but are slow;

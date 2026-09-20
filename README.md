@@ -20,22 +20,26 @@ Expo Go is **not** supported (the app needs native llama.cpp code).
 
 - **Engine:** [`llama.rn`](https://github.com/mybigday/llama.rn) (llama.cpp binding, MIT)
 - **App:** Expo SDK 57 + React Native New Architecture
-- **Storage:** `expo-file-system` for `.gguf` weights, `expo-sqlite` kv-store for chats/settings
+- **Storage:** `expo-file-system` for `.gguf` weights, `expo-sqlite` kv-store for chats/settings, `expo-document-picker` for importing `.gguf` files already on device
 - **License:** MIT — see [`LICENSE`](./LICENSE); third-party notices in
   [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)
 
 ## How it works
 
 ```
-Hugging Face (one-time download)      On-device (offline forever after)
-───────────────────────────────       ────────────────────────────────
-Models screen → pick a GGUF     ──►   expo-file-system stores .gguf
-  (e.g. Qwen 2.5 0.5B Q4_K_M)         in app documents (/localllm-models)
-         │
-         ▼
+Hugging Face / URL / device (one-time)   On-device (offline forever after)
+─────────────────────────────────       ────────────────────────────────
+Models screen → pick a GGUF       ──►   expo-file-system stores .gguf
+  (a) curated catalog                   in app documents (/localllm-models)
+  (b) custom repo + file                - direct-URL downloads saved the
+  (c) direct https:// .gguf URL           same way (id derived from filename)
+  (d) import .gguf from device          - device imports copied (never
+      (file manager → copy)               referenced in place)
+          │
+          ▼
 "Load in Chat" → llama.rn initLlama() maps weights into memory
-         │
-         ▼
+          │
+          ▼
 Chat screen → llama context.completion({ messages }) streams tokens
 ```
 
@@ -45,11 +49,11 @@ Key files:
 |---|---|
 | `src/data/models.ts` | Curated GGUF catalog (default: Qwen 2.5 0.5B Q4_K_M) |
 | `src/services/huggingface.ts` | `https://huggingface.co/<repo>/resolve/main/<file>` URL builder + `.gguf` repo browser via HF Hub API |
-| `src/services/modelDownloader.ts` | Resumable download with progress/cancel into app documents (uses `expo-file-system/legacy`) |
+| `src/services/modelDownloader.ts` | Resumable HF + direct-URL download with progress/cancel, device `.gguf` import (`importGgufFile`), and size-only `validateGgufFile` (uses `expo-file-system/legacy`) |
 | `src/services/llm.ts` | Singleton owner of the native `LlamaContext` (load/unload/streaming completion/stop) |
-| `src/context/ModelContext.tsx` | Download/load state for the UI (progress, errors, persistence) |
+| `src/context/ModelContext.tsx` | Download/load/import state for the UI (progress, errors, persistence; exposes `download`, `downloadFromUrl`, `importFromDevice`) |
 | `src/context/ChatContext.tsx` | Chat history + streaming inference (calls `llm.chatCompletion`) |
-| `src/screens/ModelScreen.tsx` | Download → Load → Chat UI, incl. custom repo/file + `.gguf` browser |
+| `src/screens/ModelScreen.tsx` | Download → Load → Chat UI: curated catalog, custom repo/file + `.gguf` browser, **import `.gguf` from device**, **download from direct URL** |
 | `src/components/ModelBanner.tsx` | "No model loaded" banner in chat |
 
 ## Prerequisites
@@ -95,6 +99,31 @@ Rules: public repos only; URL pattern is
 (e.g. original `meta-llama/*`) require license acceptance in a browser —
 use `bartowski/*-GGUF` mirrors instead.
 
+### Import a .gguf already on device
+
+In **Models → Import .gguf from device**:
+
+1. Tap **Pick .gguf file** and choose the file with the system file manager
+   (e.g. from Downloads or another app).
+2. The file is **copied** into the app's private model library
+   (`/localllm-models`, id derived from the filename) and validated by size —
+   files under ~10 MB are rejected as incomplete.
+3. Tap **Load in Chat**.
+
+Only files ending in `.gguf` are accepted. The original file is left untouched.
+
+### Download from a direct URL
+
+In **Models → Download from direct URL**:
+
+- Paste a direct `https://` link to a `.gguf` file (it must end in `.gguf`),
+  e.g. a GitHub release asset
+  (`https://github.com/<owner>/<repo>/releases/download/.../model.gguf`),
+- Optionally set a display name, then tap **Download URL** → **Load in Chat**.
+
+Paste the raw download URL, not an HTML/repo page URL. Imported and
+URL-downloaded models keep their own licenses — check the source before use.
+
 ## Configuration
 
 - **Context size:** `n_ctx: 2048` default in `src/services/llm.ts` (`loadModel` call in `ModelContext`). Raise for longer memory at the cost of RAM/speed.
@@ -113,8 +142,10 @@ model's Hugging Face page before downloading.
 | Symptom | Fix |
 |---|---|
 | "No model is loaded yet" in chat | Open Models → Download → **Load in Chat** |
-| Download HTTP 404 | Wrong repo/file spelling; use **Browse .gguf files** |
+| Download HTTP 404 | Wrong repo/file spelling; use **Browse .gguf files**. For direct URLs, make sure you pasted the raw `.../releases/download/.../*.gguf` link, not an HTML page |
 | 401/403 on lookup | Gated/private repo — use a public `*-GGUF` mirror |
+| "Not a .gguf file" / URL must end in `.gguf` | The picker/URL only accepts files ending in `.gguf` — re-check the filename or link |
+| "Model file looks incomplete" after import | Source file was truncated (< ~10 MB) — re-download it on a stable connection and import again |
 | Load fails / app killed | Model too big for device RAM — try the 0.5B or 360M model |
 | "Missing JSI bindings" / native crash | Rebuild the dev client (`npx expo prebuild && run:`); Expo Go won't work |
 | Slow tokens | Expected on CPU; smaller quants (`Q4_K_M`) and shorter `maxTokens` help |

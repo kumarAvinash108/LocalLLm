@@ -13,6 +13,7 @@ distribution under `node_modules/<package>/LICENSE*` where provided.
 | `llama.rn` (llama.cpp binding — on-device GGUF inference) | ^0.10.1 | MIT | https://github.com/mybigday/llama.rn |
 | `expo` | ^57.0.0 | MIT | https://github.com/expo/expo |
 | `expo-file-system` (model .gguf download/storage, via `/legacy` API) | ~57.0.x (SDK 57) | MIT | https://github.com/expo/expo |
+| `expo-document-picker` (import `.gguf` files already on device) | ~57.0.x (SDK 57) | MIT | https://github.com/expo/expo |
 | `expo-sqlite` (chat history persistence) | ~57.0.x | MIT | https://github.com/expo/expo |
 | `expo-status-bar` | ~57.0.x | MIT | https://github.com/expo/expo |
 | `expo-localization` | ~57.0.x | MIT | https://github.com/expo/expo |
@@ -38,7 +39,8 @@ distribution under `node_modules/<package>/LICENSE*` where provided.
 
 ## AI models (not shipped with this repo)
 
-GGUF weights downloaded at runtime from Hugging Face are **not**
+GGUF weights downloaded at runtime (from Hugging Face, direct URLs, or
+device imports) are **not**
 covered by this repo's MIT license. Each model carries its own license
 (e.g. Llama community license, Qwen license, Apache-2.0, MIT). The app
 surfaces the declared repo license where known (see

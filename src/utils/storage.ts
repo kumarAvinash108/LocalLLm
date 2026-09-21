@@ -9,6 +9,19 @@ const KEYS = {
   ACTIVE_MODEL_ID: '@localllm_active_model_id',
 };
 
+const DEFAULT_SETTINGS: Settings = {
+  language: 'en',
+  modelName: 'local-model',
+  temperature: 0.7,
+  // 512 caps per-answer CPU work: each generated token burns battery, and
+  // 2048-token answers keep all cores hot for minutes on a phone.
+  maxTokens: 512,
+  batterySaver: false,
+  // Release native weights after 10 min so an idle/loaded model doesn't
+  // keep hogging RAM (which forces the OS to compress/kill other apps).
+  autoUnloadMinutes: 10,
+};
+
 export const Storage = {
   async getConversations(): Promise<Conversation[]> {
     try {
@@ -59,11 +72,11 @@ export const Storage = {
   async getSettings(): Promise<Settings> {
     try {
       const data = await AsyncStorage.getItem(KEYS.SETTINGS);
-      return data
-        ? JSON.parse(data)
-        : { language: 'en', modelName: 'local-model', temperature: 0.7, maxTokens: 2048 };
+      // Merge over defaults so settings saved by older versions pick up
+      // the new battery fields instead of staying undefined.
+      return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : { ...DEFAULT_SETTINGS };
     } catch {
-      return { language: 'en', modelName: 'local-model', temperature: 0.7, maxTokens: 2048 };
+      return { ...DEFAULT_SETTINGS };
     }
   },
 

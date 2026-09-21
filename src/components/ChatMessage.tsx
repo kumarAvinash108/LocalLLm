@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Message } from '../types';
@@ -9,7 +9,10 @@ interface ChatMessageProps {
   isLast?: boolean;
 }
 
-export function ChatMessage({ message, isLast }: ChatMessageProps) {
+// Memoized: every streaming token re-renders the chat list, and without
+// memo every bubble (not just the streaming one) would re-render each
+// time — wasted layout/GPU work that drains battery during generation.
+export const ChatMessage = memo(function ChatMessage({ message, isLast }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
 
@@ -61,7 +64,7 @@ export function ChatMessage({ message, isLast }: ChatMessageProps) {
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

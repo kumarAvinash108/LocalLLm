@@ -1,5 +1,11 @@
-import React, { useRef, useEffect } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import React, { useRef, useEffect, useCallback } from 'react';
+import {
+  FlatList,
+  StyleSheet,
+  View,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+} from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useKeyboardHandler } from 'react-native-keyboard-controller';
 import { Screen } from '../components/Screen';
@@ -39,6 +45,25 @@ export function ChatScreen({ onOpenModels }: { onOpenModels?: () => void }) {
   } = useChat();
   const flatListRef = useRef<FlatList>(null);
   const keyboardHeight = useKeyboardHeight();
+  // Only auto-scroll while the user is near the bottom: scrolling on every
+  // token flush (plus an animated scroll each time) keeps the UI thread
+  // and GPU busy for the whole answer. Throttled to ~3/sec.
+  const nearBottomRef = useRef(true);
+  const lastAutoScrollRef = useRef(0);
+
+  const scrollToEndIfNeeded = useCallback((animated: boolean) => {
+    if (!nearBottomRef.current) return;
+    const now = Date.now();
+    if (now - lastAutoScrollRef.current < 300) return;
+    lastAutoScrollRef.current = now;
+    flatListRef.current?.scrollToEnd({ animated });
+  }, []);
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+    nearBottomRef.current =
+      contentSize.height - (layoutMeasurement.height + contentOffset.y) < 120;
+  }, []);
 
   // Spacer that grows/shrinks in sync with the keyboard animation,
   // plus a small breathing gap so the input never touches the keyboard.
@@ -52,21 +77,31 @@ export function ChatScreen({ onOpenModels }: { onOpenModels?: () => void }) {
 
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+      const t = setTimeout(() => {
+        scrollToEndIfNeeded(true);
       }, 100);
+      return () => clearTimeout(t);
     }
-  }, [messages.length, messages[messages.length - 1]?.content]);
+  }, [messages.length, messages[messages.length - 1]?.content, scrollToEndIfNeeded]);
 
   const handleSend = (text: string) => {
     sendMessage(text);
   };
 
-  const renderItem = ({ item, index }: { item: Message; index: number }) => (
-    <ChatMessage message={item} isLast={index === messages.length - 1} />
+  const renderItem = useCallback(
+    ({ item, index }: { item: Message; index: number }) => (
+      <ChatMessage message={item} isLast={index === messages.length - 1} />
+    ),
+    [messages.length],
   );
 
-  const keyExtractor = (item: Message) => item.id;
+  const keyExtractor = useCallback((item: Message) => item.id, []);
+
+  const handleContentSizeChange = useCallback(() => {
+    // Non-animated during streaming: cheaper than restarting an animation
+    // on every flush; the periodic effect scroll above stays animated.
+    scrollToEndIfNeeded(false);
+  }, [scrollToEndIfNeeded]);
 
   return (
     <Screen style={styles.container} edges={['bottom']}>
@@ -83,7 +118,15 @@ export function ChatScreen({ onOpenModels }: { onOpenModels?: () => void }) {
             contentContainerStyle={styles.messageList}
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            // Render fewer off-screen rows: less layout/GPU work per token.
+            removeClippedSubviews
+            initialNumToRender={12}
+            maxToRenderPerBatch={8}
+            windowSize={7}
+            updateCellsBatchingPeriod={100}
+            scrollEventThrottle={100}
+            onScroll={handleScroll}
+            onContentSizeChange={handleContentSizeChange}
           />
         )}
         <ChatInput onSend={handleSend} isGenerating={isGenerating} onStop={stopGenerating} />

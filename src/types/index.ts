@@ -19,6 +19,13 @@ export interface Settings {
   modelName: string;
   temperature: number;
   maxTokens: number;
+  /** When true, inference uses fewer threads / shorter answers to save battery. */
+  batterySaver?: boolean;
+  /**
+   * Minutes of background/idle time after which the loaded model is
+   * released from RAM. 0 (or undefined) = never auto-unload.
+   */
+  autoUnloadMinutes?: number;
 }
 
 export interface ModelInfo {

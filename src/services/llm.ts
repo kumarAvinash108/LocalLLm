@@ -51,7 +51,27 @@ export interface LoadOptions {
   modelPath: string; // local file:// URI or absolute path
   nCtx?: number;
   nThreads?: number;
+  /**
+   * Battery-saver mode: fewer CPU threads and a smaller context window,
+   * so inference uses less energy at the cost of some speed/context.
+   */
+  lowPower?: boolean;
   onProgress?: (progress: number) => void;
+}
+
+/**
+ * Battery-efficient thread default. Lighting up every core (the llama.cpp
+ * default) drains the battery fast on phones; 4 threads is the sweet spot
+ * for small on-device models, 2 in low-power mode.
+ */
+export const BALANCED_THREADS = 4;
+export const LOW_POWER_THREADS = 2;
+const LOW_POWER_MAX_CTX = 1024;
+
+function resolveThreads(nThreads: number | undefined, lowPower: boolean): number {
+  if (lowPower) return LOW_POWER_THREADS;
+  if (typeof nThreads !== 'number' || !Number.isFinite(nThreads)) return BALANCED_THREADS;
+  return Math.min(Math.max(Math.round(nThreads), 1), 8);
 }
 
 /** Load (or return the already-loaded) model. Serializes concurrent calls. */
@@ -66,6 +86,13 @@ export async function loadModel(opts: LoadOptions): Promise<LlamaContext> {
   await unloadModel();
 
   loadedModelId = opts.modelId;
+  const lowPower = opts.lowPower ?? false;
+  // Clamp thread count: unbounded threads keep big cores awake and burn
+  // battery. Cap the context too in low-power mode — a smaller KV cache
+  // means less memory pressure and less work per token.
+  const nThreads = resolveThreads(opts.nThreads, lowPower);
+  const requestedCtx = opts.nCtx ?? 2048;
+  const nCtx = lowPower ? Math.min(requestedCtx, LOW_POWER_MAX_CTX) : requestedCtx;
   // llama.cpp reports progress as 0..1; normalize to 0..100 for the UI.
   const normalize = opts.onProgress
     ? (p: number) => {
@@ -79,8 +106,15 @@ export async function loadModel(opts: LoadOptions): Promise<LlamaContext> {
   loadPromise = initLlama(
     {
       model: opts.modelPath,
-      n_ctx: opts.nCtx ?? 2048,
-      n_threads: opts.nThreads,
+      n_ctx: nCtx,
+      n_threads: nThreads,
+      // mmap pages weights straight from storage instead of copying them
+      // into RAM; mlock would pin RAM awake and waste power — keep it off.
+      use_mmap: true,
+      use_mlock: false,
+      // Shift the KV cache instead of failing when the prompt exceeds
+      // n_ctx, so long chats don't force an expensive full reload.
+      ctx_shift: true,
     },
     normalize,
   ).then((ctx) => {

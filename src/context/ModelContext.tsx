@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { AppState } from 'react-native';
 import { DownloadedModel, ModelInfo, ModelStatus } from '../types';
 import { DEFAULT_MODELS } from '../data/models';
 import { Storage } from '../utils/storage';
@@ -48,6 +49,8 @@ interface ModelContextValue {
   unload: () => Promise<void>;
   remove: (modelId: string) => Promise<void>;
   refresh: () => Promise<void>;
+  /** Reset the idle auto-unload countdown (call after chat activity). */
+  notifyActivity: () => void;
 }
 
 const ModelContext = createContext<ModelContextValue | null>(null);
@@ -61,6 +64,66 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
   const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const handleRef = useRef<DownloadHandle | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusRef = useRef<ModelStatus>('idle');
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  const clearIdleTimer = useCallback(() => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+  }, []);
+
+  const unloadInternal = useCallback(async () => {
+    clearIdleTimer();
+    await nativeUnload();
+    if (statusRef.current === 'ready') setStatus('idle');
+    setLoadProgress(0);
+  }, [clearIdleTimer]);
+
+  /**
+   * Arm the idle auto-unload timer: a model sitting loaded in RAM keeps
+   * memory pressured (and tempts background inference), both of which cost
+   * battery. Fires after `autoUnloadMinutes` (0 = never).
+   */
+  const armIdleTimer = useCallback(async () => {
+    clearIdleTimer();
+    if (statusRef.current !== 'ready') return;
+    const settings = await Storage.getSettings();
+    const minutes = settings.autoUnloadMinutes ?? 10;
+    if (!minutes || minutes <= 0) return;
+    idleTimerRef.current = setTimeout(
+      () => {
+        void unloadInternal();
+      },
+      minutes * 60 * 1000,
+    );
+  }, [clearIdleTimer, unloadInternal]);
+
+  const notifyActivity = useCallback(() => {
+    void armIdleTimer();
+  }, [armIdleTimer]);
+
+  // Release native weights when the app sits in the background: inference
+  // can never run usefully there, so holding GBs of weights only burns
+  // battery via memory pressure. Returning to foreground cancels it.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        void armIdleTimer();
+      } else if (state === 'active') {
+        clearIdleTimer();
+      }
+    });
+    return () => {
+      sub.remove();
+      clearIdleTimer();
+    };
+  }, [armIdleTimer, clearIdleTimer]);
 
   const refresh = useCallback(async () => {
     const [stored, activeId] = await Promise.all([
@@ -236,10 +299,15 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
       setStatus('loading');
       setLoadProgress(0);
       try {
+        // Battery saver → fewer threads + smaller context (see llm.ts):
+        // less CPU heat per token on phones.
+        const settings = await Storage.getSettings();
+        const lowPower = settings.batterySaver ?? false;
         await nativeLoadModel({
           modelId: entry.id,
           modelPath: freshUri,
-          nCtx: 2048,
+          nCtx: lowPower ? 1024 : 2048,
+          lowPower,
           onProgress: (p) => setLoadProgress(p <= 1 ? p * 100 : p),
         });
         // Persist the fresh path so the next cold start uses a valid URI.
@@ -259,6 +327,8 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
           modelName: entry.name,
         });
         setStatus('ready');
+        // Start the idle countdown now that weights are resident.
+        void armIdleTimer();
       } catch (e) {
         const raw = e instanceof Error ? e.message : 'Failed to load model.';
         const sizeMB =
@@ -271,17 +341,16 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
         throw e instanceof Error ? new Error(msg) : new Error(msg);
       }
     },
-    [downloaded, refresh],
+    [downloaded, refresh, armIdleTimer],
   );
 
   const unload = useCallback(async () => {
-    await nativeUnload();
-    setStatus('idle');
-    setLoadProgress(0);
-  }, []);
+    await unloadInternal();
+  }, [unloadInternal]);
 
   const remove = useCallback(
     async (modelId: string) => {
+      clearIdleTimer();
       if (activeModelId === modelId) {
         await nativeUnload();
         setStatus('idle');
@@ -295,7 +364,7 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
     },
-    [activeModelId],
+    [activeModelId, clearIdleTimer],
   );
 
   const activeModel = useMemo(
@@ -322,6 +391,7 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
     unload,
     remove,
     refresh,
+    notifyActivity,
   };
 
   return <ModelContext.Provider value={value}>{children}</ModelContext.Provider>;

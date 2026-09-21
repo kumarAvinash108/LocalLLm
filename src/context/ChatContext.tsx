@@ -1,7 +1,48 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import { AppState } from 'react-native';
 import { Conversation, Message } from '../types';
 import { Storage } from '../utils/storage';
 import { chatCompletion, isModelLoaded, stopCompletion } from '../services/llm';
+import { useModel } from './ModelContext';
+
+/**
+ * Battery bounds for prompt construction. Prompt evaluation ("prefill")
+ * is the most CPU-intensive phase of on-device inference and its cost
+ * grows with prompt length — resending the entire conversation every turn
+ * makes each reply slower and hotter than the last. Cap both the number
+ * of messages and the total characters sent.
+ */
+const MAX_HISTORY_MESSAGES = 20;
+const MAX_HISTORY_CHARS = 6000;
+const SAVER_HISTORY_MESSAGES = 12;
+const SAVER_HISTORY_CHARS = 4000;
+/** Per-answer token caps: every generated token keeps the CPU awake. */
+const DEFAULT_MAX_TOKENS = 512;
+/** Hard ceiling even for explicitly Long answers (legacy 2048 cleanup). */
+const MAX_TOKENS_CAP = 1024;
+const SAVER_MAX_TOKENS = 256;
+
+function buildPromptHistory(
+  messages: Message[],
+  maxMessages: number,
+  maxChars: number,
+): Pick<Message, 'role' | 'content'>[] {
+  const recent = messages.slice(-maxMessages);
+  let chars = 0;
+  const picked: Pick<Message, 'role' | 'content'>[] = [];
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const m = recent[i];
+    if (picked.length > 0 && chars + m.content.length > maxChars) break;
+    chars += m.content.length;
+    picked.unshift({ role: m.role, content: m.content });
+  }
+  // Never send an empty prompt: truncate the latest message instead.
+  if (picked.length === 0 && recent.length > 0) {
+    const last = recent[recent.length - 1];
+    picked.push({ role: last.role, content: last.content.slice(-maxChars) });
+  }
+  return picked;
+}
 
 interface ChatState {
   conversations: Conversation[];
@@ -79,9 +120,23 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const { notifyActivity } = useModel();
 
   useEffect(() => {
     loadInitialData();
+  }, []);
+
+  // Stop burning battery the moment the app backgrounds: an answer nobody
+  // is watching should not keep every core hot in the background.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (appState) => {
+      if (appState === 'background' && abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        void stopCompletion();
+        dispatch({ type: 'SET_GENERATING', generating: false });
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   const loadInitialData = async () => {
@@ -205,9 +260,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         }
 
         const settings = await Storage.getSettings();
-        const history: Pick<Message, 'role' | 'content'>[] = [
-          ...updatedConv.messages.map((m) => ({ role: m.role, content: m.content })),
-        ];
+        const saver = settings.batterySaver ?? false;
+        // Bound prompt size (prefill cost) and answer length (decode cost).
+        const history = buildPromptHistory(
+          updatedConv.messages,
+          saver ? SAVER_HISTORY_MESSAGES : MAX_HISTORY_MESSAGES,
+          saver ? SAVER_HISTORY_CHARS : MAX_HISTORY_CHARS,
+        );
+        const maxTokens = Math.min(
+          settings.maxTokens ?? DEFAULT_MAX_TOKENS,
+          saver ? SAVER_MAX_TOKENS : MAX_TOKENS_CAP,
+        );
+        // Battery saver flushes UI less often: fewer bridge crossings and
+        // re-renders per answer at the cost of slightly chunkier streaming.
+        const flushIntervalMs = saver ? 250 : 120;
 
         let accumulated = '';
         let lastFlush = 0;
@@ -223,14 +289,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         const fullText = await chatCompletion({
           messages: history,
           temperature: settings.temperature ?? 0.7,
-          maxTokens: settings.maxTokens ?? 512,
+          maxTokens,
           abortSignal: signal,
           onToken: (token) => {
             if (signal.aborted) return;
             accumulated += token;
             // Throttle re-renders: flush at most every ~120ms (plus final flush below).
             const now = Date.now();
-            if (now - lastFlush > 120) {
+            if (now - lastFlush > flushIntervalMs) {
               lastFlush = now;
               flush();
             }
@@ -276,9 +342,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       } finally {
         dispatch({ type: 'SET_GENERATING', generating: false });
         abortControllerRef.current = null;
+        // Chat activity resets the model's idle auto-unload countdown.
+        notifyActivity();
       }
     },
-    [state.activeConversationId, state.conversations, createNewChat]
+    [state.activeConversationId, state.conversations, createNewChat, notifyActivity]
   );
 
   const stopGenerating = useCallback(() => {

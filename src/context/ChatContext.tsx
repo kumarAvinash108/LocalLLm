@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { AppState } from 'react-native';
-import { Conversation, Message } from '../types';
+import { Conversation, ImageAttachment, Message } from '../types';
 import { Storage } from '../utils/storage';
 import { chatCompletion, isModelLoaded, stopCompletion } from '../services/llm';
 import { useModel } from './ModelContext';
@@ -31,17 +31,47 @@ function buildPromptHistory(
   let chars = 0;
   const picked: Pick<Message, 'role' | 'content'>[] = [];
   for (let i = recent.length - 1; i >= 0; i--) {
-    const m = recent[i];
-    if (picked.length > 0 && chars + m.content.length > maxChars) break;
-    chars += m.content.length;
-    picked.unshift({ role: m.role, content: m.content });
+    // Images reach the text-only model as OCR text, so measure the
+    // expanded prompt content (not the raw caption) against the budget.
+    const content = promptContentForMessage(recent[i]);
+    if (picked.length > 0 && chars + content.length > maxChars) break;
+    chars += content.length;
+    picked.unshift({ role: recent[i].role, content });
   }
   // Never send an empty prompt: truncate the latest message instead.
   if (picked.length === 0 && recent.length > 0) {
     const last = recent[recent.length - 1];
-    picked.push({ role: last.role, content: last.content.slice(-maxChars) });
+    const content = promptContentForMessage(last).slice(-maxChars);
+    picked.push({ role: last.role, content });
   }
   return picked;
+}
+
+/**
+ * Text-only GGUF models cannot see pixels. Images are represented by
+ * their on-device OCR text so the model can still answer questions
+ * about documents, screenshots, signs, etc. — fully offline.
+ */
+export function promptContentForMessage(m: Message): string {
+  if (!m.images || m.images.length === 0) return m.content;
+  const caption = m.content.trim();
+  const parts = [
+    caption || '(The user attached image(s) with no caption. Answer about what the extracted text says.)',
+  ];
+  m.images.forEach((img, idx) => {
+    const n = idx + 1;
+    if (img.ocrState === 'done' && img.ocrText) {
+      parts.push(`[Image ${n} — text extracted on-device by OCR]:\n${img.ocrText}`);
+    } else if (img.ocrState === 'empty') {
+      parts.push(`[Image ${n}: on-device OCR found no readable text in the image.]`);
+    } else {
+      parts.push(
+        `[Image ${n} attached, but on-device text recognition was unavailable for it. ` +
+          `Explain you can only read image text when the app is run from a dev build with OCR support.]`,
+      );
+    }
+  });
+  return parts.join('\n\n');
 }
 
 interface ChatState {
@@ -109,7 +139,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 interface ChatContextValue extends ChatState {
   activeConversation: Conversation | null;
   createNewChat: () => string;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, opts?: { images?: ImageAttachment[] }) => Promise<void>;
   deleteChat: (id: string) => Promise<void>;
   selectChat: (id: string) => void;
   stopGenerating: () => void;
@@ -189,7 +219,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   );
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, opts?: { images?: ImageAttachment[] }) => {
+      const images = opts?.images?.length ? opts.images : undefined;
+      const text = content.trim();
+      // Allow image-only sends (no caption) — OCR text becomes the prompt.
+      if (!text && !images) return;
       let convId = state.activeConversationId;
 
       if (!convId) {
@@ -199,13 +233,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const userMessage: Message = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2),
         role: 'user',
-        content,
+        content: text,
         timestamp: Date.now(),
+        ...(images ? { images } : {}),
       };
 
+      const fallbackTitle = images ? '📷 Image chat' : 'New Chat';
+      const titleSeed = text || fallbackTitle;
       const conv = state.conversations.find((c) => c.id === convId) ?? {
         id: convId,
-        title: content.slice(0, 40),
+        title: titleSeed.slice(0, 40),
         messages: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -213,7 +250,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       const updatedConv: Conversation = {
         ...conv,
-        title: conv.messages.length === 0 ? content.slice(0, 40) : conv.title,
+        title: conv.messages.length === 0 ? titleSeed.slice(0, 40) : conv.title,
         messages: [...conv.messages, userMessage],
         updatedAt: Date.now(),
       };

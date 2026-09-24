@@ -43,6 +43,14 @@
           "enableOpenCLAndHexagon": true
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos so you can attach images to chats.",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera so you can photograph documents for offline text reading.",
+          "microphonePermission": false
+        }
+      ],
       "expo-localization",
       "expo-sqlite",
       "expo-status-bar",

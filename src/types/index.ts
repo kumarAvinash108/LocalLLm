@@ -1,8 +1,23 @@
+export interface ImageAttachment {
+  id: string;
+  /** Local file:// URI persisted under the app's document directory. */
+  uri: string;
+  width?: number;
+  height?: number;
+  /**
+   * Text extracted on-device via OCR. Empty string = ran OCR, found nothing.
+   * Undefined = OCR not run yet / unavailable.
+   */
+  ocrText?: string;
+  ocrState: 'pending' | 'done' | 'empty' | 'error';
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  images?: ImageAttachment[];
 }
 
 export interface Conversation {

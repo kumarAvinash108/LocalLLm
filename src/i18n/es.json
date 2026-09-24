@@ -13,7 +13,14 @@
     "emptySubtitle": "Inicia una conversación con un modelo de IA local.",
     "modelLoaded": "Modelo cargado exitosamente",
     "modelLoading": "Cargando modelo...",
-    "modelError": "Error al cargar el modelo"
+    "modelError": "Error al cargar el modelo",
+    "attachImage": "Adjuntar imagen",
+    "askAboutImages": "Pregunta sobre la(s) imagen(es)...",
+    "ocrReading": "Leyendo el texto de la(s) imagen(es) en el dispositivo…",
+    "ocrIncluded": "imagen(es) • texto leído sin conexión vía OCR",
+    "ocrTextIncluded": "Texto OCR incluido",
+    "ocrNoText": "No se encontró texto legible en la(s) imagen(es)",
+    "ocrUnavailable": "Texto de imagen no disponible (OCR necesita una build de desarrollo)"
   },
   "sidebar": {
     "title": "Historial de Chats",

@@ -15,7 +15,7 @@ import { ChatInput } from '../components/ChatInput';
 import { EmptyState } from '../components/EmptyState';
 import { ModelBanner } from '../components/ModelBanner';
 import { Colors } from '../theme/colors';
-import { Message } from '../types';
+import { Message, ImageAttachment } from '../types';
 
 /**
  * Tracks the keyboard height frame-by-frame (shared value, UI thread).
@@ -84,8 +84,8 @@ export function ChatScreen({ onOpenModels }: { onOpenModels?: () => void }) {
     }
   }, [messages.length, messages[messages.length - 1]?.content, scrollToEndIfNeeded]);
 
-  const handleSend = (text: string) => {
-    sendMessage(text);
+  const handleSend = (text: string, images: ImageAttachment[] = []) => {
+    sendMessage(text, images.length > 0 ? { images } : undefined);
   };
 
   const renderItem = useCallback(

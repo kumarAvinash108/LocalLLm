@@ -13,7 +13,14 @@
     "emptySubtitle": "Start a conversation with a local AI model.",
     "modelLoaded": "Model loaded successfully",
     "modelLoading": "Loading model...",
-    "modelError": "Failed to load model"
+    "modelError": "Failed to load model",
+    "attachImage": "Attach image",
+    "askAboutImages": "Ask about the image(s)...",
+    "ocrReading": "Reading text from image(s) on-device…",
+    "ocrIncluded": "image(s) • text read offline via OCR",
+    "ocrTextIncluded": "OCR text included",
+    "ocrNoText": "No readable text found in image(s)",
+    "ocrUnavailable": "Image text unavailable (OCR needs a dev build)"
   },
   "sidebar": {
     "title": "Chat History",

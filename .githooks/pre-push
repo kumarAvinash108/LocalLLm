@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Pre-push hook: asks for an app version bump before every `git push`.
+#
+# - If you bump, the hook commits package.json + app.json as
+#   "chore: bump version to X.Y.Z", REJECTS this push, and asks you to
+#   `git push` again (the version commit must be part of the push so that
+#   CI sees the version change).
+# - If you skip, the push goes through but the GitHub Action will detect
+#   "no version change" and skip the Expo/EAS build.
+#
+# Install with:  npm run setup-hooks   (sets git config core.hooksPath .githooks)
+# Bypass once with: git push --no-verify (skips the prompt; CI will skip the build
+#   unless the version was bumped some other way)
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# --no-verify bypass passes through silently.
+# Non-interactive environments (no /dev/tty): don't block the push,
+# just remind the user that CI builds only on version changes.
+if [ ! -t 0 ] && [ ! -r /dev/tty ]; then
+  echo "[pre-push] Non-interactive push detected — skipping version prompt."
+  echo "[pre-push] Reminder: the EAS build only runs when app.json/package.json version changes."
+  echo "[pre-push] Run 'npm run bump' locally if you want a build."
+  exit 0
+fi
+
+echo ""
+echo "=== App version check (pre-push) ==="
+CURRENT="$(node scripts/bump-version.mjs --current 2>/dev/null || echo unknown)"
+echo "Current version: $CURRENT"
+echo "The GitHub Action builds on EAS ONLY when the version changes."
+echo ""
+
+# Re-attach the prompt to the terminal: git occupies stdin in pre-push hooks.
+if [ -r /dev/tty ]; then
+  node scripts/bump-version.mjs < /dev/tty
+  STATUS=$?
+else
+  node scripts/bump-version.mjs
+  STATUS=$?
+fi
+
+if [ "$STATUS" -eq 2 ]; then
+  echo ""
+  echo "[pre-push] Version unchanged — push continues, but CI will SKIP the EAS build."
+  exit 0
+fi
+
+if [ "$STATUS" -ne 0 ]; then
+  echo "[pre-push] Version prompt failed/aborted — push cancelled."
+  exit 1
+fi
+
+# A bump happened: commit it and stop this push so the user re-pushes with it.
+NEW_VERSION="$(node scripts/bump-version.mjs --current)"
+git add package.json app.json
+if git diff --cached --quiet -- package.json app.json; then
+  echo "[pre-push] No version changes to commit — push continues."
+  exit 0
+fi
+
+git commit -m "chore: bump version to $NEW_VERSION"
+echo ""
+echo "[pre-push] Committed version $NEW_VERSION."
+echo "[pre-push] Push REJECTED on purpose — run 'git push' again to push WITH the version bump,"
+echo "           so the GitHub Action detects the change and triggers the Expo build."
+exit 1

@@ -38,7 +38,12 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "bump": "node scripts/bump-version.mjs",
+    "bump:patch": "node scripts/bump-version.mjs --patch",
+    "bump:minor": "node scripts/bump-version.mjs --minor",
+    "bump:major": "node scripts/bump-version.mjs --major",
+    "setup-hooks": "bash scripts/setup-hooks.sh"
   },
   "private": true
 }

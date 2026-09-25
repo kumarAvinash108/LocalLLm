@@ -14,6 +14,9 @@ import { Colors } from '../theme/colors';
 import { Storage } from '../utils/storage';
 import { Settings } from '../types';
 import { useModel } from '../context/ModelContext';
+import appJson from '../../app.json';
+
+const APP_VERSION = (appJson as { expo?: { version?: string } })?.expo?.version ?? '1.0.0';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -173,7 +176,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
         <Text style={styles.sectionTitle}>{t('settings.about')}</Text>
         <View style={styles.aboutRow}>
           <Text style={styles.aboutLabel}>{t('settings.version')}</Text>
-          <Text style={styles.aboutValue}>1.0.0</Text>
+          <Text style={styles.aboutValue}>{APP_VERSION}</Text>
         </View>
       </View>
 

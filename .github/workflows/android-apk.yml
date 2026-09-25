@@ -1,13 +1,19 @@
 # Builds the Android app on EAS and publishes it to a GitHub Release.
 #
-# Triggers:
-#   - every push to main (including merged PRs) → always builds the
-#     `preview` profile (installable APK, rolling `latest` release)
-#   - manually via "Run workflow" in the Actions tab → you pick the
-#     profile: `preview` (APK), `uptodown` (signed store APK for Uptodown),
-#     or `production` (AAB for Play Store).
-#     The `uptodown` / `production` builds ONLY run when triggered manually —
-#     pushes to main never build them.
+# VERSION-GATED BUILDS:
+#   - Every `git push` runs the local `.githooks/pre-push` hook, which asks
+#     for a version bump (patch/minor/major/custom/skip) and keeps
+#     package.json + app.json in sync. Install it once with:
+#         npm run setup-hooks
+#   - Pushes to main ONLY build when the app version changed in that push
+#     (expo.version in app.json, or version in package.json, or
+#     android versionCode). Otherwise the workflow exits early and NO
+#     EAS build is triggered — saving build minutes.
+#   - Manual "Run workflow" dispatches ALWAYS build (version check bypassed).
+#
+# Manual runs let you pick the profile: `preview` (APK), `uptodown`
+# (signed store APK for Uptodown), or `production` (AAB for Play Store).
+# Pushes to main always use `preview`.
 #
 # One-time setup ( Maintainer only ):
 #   1. Create an Expo account, then run once locally and follow the prompts
@@ -17,6 +23,7 @@
 #   2. Create an access token at https://expo.dev/settings/access-tokens
 #      and add it as a repo secret named EXPO_TOKEN
 #      (Repo → Settings → Secrets and variables → Actions).
+#   3. Each dev machine runs once:  npm run setup-hooks
 
 name: Android APK
 
@@ -36,14 +43,86 @@ on:
           - production
 
 jobs:
+  check-version:
+    name: Check if app version changed
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout (full history for version diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare version before/after push
+        id: check
+        run: |
+          BEFORE="${{ github.event.before }}"
+          SHA="${{ github.sha }}"
+          echo "before=$BEFORE sha=$SHA"
+
+          current_version() {
+            jq -r '.expo.version // empty' app.json 2>/dev/null
+          }
+          current_code() {
+            jq -r '.expo.android.versionCode // empty' app.json 2>/dev/null
+          }
+          current_pkg() {
+            jq -r '.version // empty' package.json 2>/dev/null
+          }
+
+          NEW_VERSION="$(current_version)"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+          # Manual runs always build.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — will build (version $NEW_VERSION)."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # First push / new branch (before is all zeros): nothing to diff against → build.
+          if [[ "$BEFORE" =~ ^0+$ ]] || [ -z "$BEFORE" ]; then
+            echo "No base commit to compare — will build."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          OLD_VERSION="$(git show "$BEFORE:app.json" 2>/dev/null | jq -r '.expo.version // empty')"
+          OLD_CODE="$(git show "$BEFORE:app.json" 2>/dev/null | jq -r '.expo.android.versionCode // empty')"
+          OLD_PKG="$(git show "$BEFORE:package.json" 2>/dev/null | jq -r '.version // empty')"
+          NEW_CODE="$(current_code)"
+          NEW_PKG="$(current_pkg)"
+
+          echo "old: version=$OLD_VERSION code=$OLD_CODE pkg=$OLD_PKG"
+          echo "new: version=$NEW_VERSION code=$NEW_CODE pkg=$NEW_PKG"
+
+          if [ -z "$OLD_VERSION" ]; then
+            echo "Could not read base version (shallow/first push) — will build."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$OLD_VERSION" != "$NEW_VERSION" ] || [ "$OLD_CODE" != "$NEW_CODE" ] || [ "$OLD_PKG" != "$NEW_PKG" ]; then
+            echo "Version changed — will build."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version unchanged ($NEW_VERSION) — skipping EAS build."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build Android app and publish release
+    needs: check-version
+    if: needs.check-version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       # Manual runs use the chosen profile; pushes always use preview.
       PROFILE: ${{ github.event.inputs.profile || 'preview' }}
+      APP_VERSION: ${{ needs.check-version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,7 +148,7 @@ jobs:
       - name: Download build artifact
         id: artifact
         run: |
-          echo "=== profile: $PROFILE ==="
+          echo "=== profile: $PROFILE | version: $APP_VERSION ==="
           echo "=== build.json preview ==="
           head -c 5000 build.json; echo
           URL=$(jq -r 'if type == "array" then .[0] else . end | .artifacts.applicationArchiveUrl // .artifacts.buildUrl // empty' build.json)
@@ -88,15 +167,20 @@ jobs:
           curl -L --fail -o "$FILE" "$URL"
           ls -lh "$FILE"
 
-      - name: Publish rolling 'latest' release (preview APK)
+      - name: Publish versioned release (preview APK)
         if: env.PROFILE == 'preview'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TAG="v$APP_VERSION"
+          gh release create "$TAG" LocalLLM.apk \
+            --title "LocalLLM $TAG (Android APK)" \
+            --notes "Auto-built (preview profile, version $APP_VERSION) from ${{ github.sha }} on $(date -u +%Y-%m-%d). Install on a physical Android device — Expo Go is not supported." \
+            || echo "Release $TAG may already exist — continuing to update 'latest'."
           gh release delete latest --cleanup-tag --yes || true
           gh release create latest LocalLLM.apk \
-            --title "Latest Android APK" \
-            --notes "Auto-built (preview profile) from ${{ github.sha }} on $(date -u +%Y-%m-%d). Install on a physical Android device — Expo Go is not supported."
+            --title "Latest Android APK ($TAG)" \
+            --notes "Auto-built (preview profile, version $APP_VERSION) from ${{ github.sha }} on $(date -u +%Y-%m-%d). Install on a physical Android device — Expo Go is not supported."
 
       - name: Publish rolling 'uptodown' release (signed store APK for Uptodown)
         if: env.PROFILE == 'uptodown'
@@ -105,8 +189,8 @@ jobs:
         run: |
           gh release delete uptodown --cleanup-tag --yes || true
           gh release create uptodown LocalLLM.apk \
-            --title "Uptodown Android APK" \
-            --notes "Signed store APK (uptodown profile) from ${{ github.sha }} on $(date -u +%Y-%m-%d). Upload this APK to the Uptodown Developers Console. Package: com.kumaravinash108.localllm — versionCode must increase on every update."
+            --title "Uptodown Android APK ($APP_VERSION)" \
+            --notes "Signed store APK (uptodown profile, version $APP_VERSION) from ${{ github.sha }} on $(date -u +%Y-%m-%d). Upload this APK to the Uptodown Developers Console. Package: com.kumaravinash108.localllm — versionCode must increase on every update."
 
       - name: Publish rolling 'production' release (production AAB)
         if: env.PROFILE == 'production'
@@ -115,11 +199,19 @@ jobs:
         run: |
           gh release delete production --cleanup-tag --yes || true
           gh release create production LocalLLM.aab \
-            --title "Production Android AAB" \
-            --notes "Manually triggered production build from ${{ github.sha }} on $(date -u +%Y-%m-%d). Upload this AAB to the Play Console."
+            --title "Production Android AAB ($APP_VERSION)" \
+            --notes "Manually triggered production build (version $APP_VERSION) from ${{ github.sha }} on $(date -u +%Y-%m-%d). Upload this AAB to the Play Console."
 
       - name: Upload build as workflow artifact (backup)
         uses: actions/upload-artifact@v4
         with:
-          name: LocalLLM-${{ env.PROFILE }}
+          name: LocalLLM-${{ env.PROFILE }}-v${{ env.APP_VERSION }}
           path: ${{ steps.artifact.outputs.file }}
+
+  skip-notice:
+    name: Version unchanged — build skipped
+    needs: check-version
+    if: needs.check-version.outputs.changed != 'true' && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No version change detected (still ${{ needs.check-version.outputs.version }}) — EAS build skipped. Bump the version (npm run bump) and push again to trigger a build."

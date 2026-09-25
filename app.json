@@ -12,11 +12,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kumaravinash108.localllm",
-      "buildNumber": "2"
+      "buildNumber": "3"
     },
     "android": {
       "package": "com.kumaravinash108.localllm",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"

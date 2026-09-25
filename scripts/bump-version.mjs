@@ -54,6 +54,16 @@ function isValidSemver(v) {
   return /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/.test(v);
 }
 
+// Compares two x.y.z versions: -1 if a < b, 0 if equal, 1 if a > b.
+function compareSemver(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
+  }
+  return 0;
+}
+
 function bumpSemver(version, kind) {
   const match = version.match(/^(\d+)\.(\d+)\.(\d+)(.*)$/);
   if (!match) throw new Error(`Cannot bump non-semver version: ${version}`);
@@ -91,41 +101,109 @@ function applyVersion(nextVersion) {
   };
 }
 
-function ask(question) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => rl.question(question, (ans) => {
-    rl.close();
-    resolve(ans);
-  }));
-}
-
 async function interactive() {
   const { version, versionCode } = getCurrent();
   console.log(`\nCurrent version: ${version} (android versionCode ${versionCode ?? 'n/a'})`);
   console.log('  1) patch  (bug fixes)          4) custom  (type x.y.z)');
   console.log('  2) minor  (new features)       5) skip    (no version change, CI will NOT build)');
   console.log('  3) major  (breaking changes)');
-  const answer = (await ask('\nSelect version bump [1/2/3/4/5]: ')).trim().toLowerCase();
+  console.log('  (or type a version directly, e.g. 1.2.0)');
+
+  // Prompting works in two modes:
+  //   - TTY (real `git push` in a terminal, hook re-attaches /dev/tty):
+  //     one persistent readline interface for the whole session.
+  //   - Piped stdin (scripted use, tests): slurp all lines upfront, because
+  //     node:readline can report EOF to a second question even when piped
+  //     lines remain (buffering quirk) — deterministic line-feeding avoids it.
+  let pipedLines = null;
+  let rl = null;
+  if (!process.stdin.isTTY) {
+    const data = await new Promise((resolve) => {
+      let chunks = '';
+      process.stdin.setEncoding('utf8');
+      process.stdin.on('data', (c) => (chunks += c));
+      process.stdin.on('end', () => resolve(chunks));
+    });
+    pipedLines = data.split(/\r?\n/);
+    // Drop the trailing empty element from a final newline.
+    if (pipedLines.length > 0 && pipedLines[pipedLines.length - 1] === '') pipedLines.pop();
+  } else {
+    rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  }
+  let pipedIndex = 0;
+  const eofAbort = () => {
+    console.error('\nNo input received (EOF) — aborting.');
+    if (rl) rl.close();
+    process.exit(1);
+  };
+  const askRequired = async (question) => {
+    if (pipedLines !== null) {
+      process.stdout.write(question);
+      if (pipedIndex >= pipedLines.length) eofAbort();
+      const line = pipedLines[pipedIndex++];
+      process.stdout.write(`${line}\n`); // echo scripted answers into logs
+      return line;
+    }
+    return new Promise((resolve) => {
+      let answered = false;
+      rl.question(question, (ans) => {
+        answered = true;
+        resolve(ans);
+      });
+      // stdin EOF with a pending question: resolve null instead of hanging
+      // forever (node would then exit 0 silently and the hook would misread
+      // it as success). The `answered` guard matters: rl.close() emits
+      // 'close' synchronously, so it must not override a real answer.
+      rl.once('close', () => {
+        if (!answered) resolve(null);
+      });
+    }).then((ans) => {
+      if (ans === null) eofAbort();
+      return ans;
+    });
+  };
+  const finish = (code) => {
+    if (rl) rl.close();
+    process.exit(code);
+  };
+
+  const raw = await askRequired('\nSelect version bump [1/2/3/4/5 or x.y.z]: ');
+  const answer = raw.trim().toLowerCase();
+  // Accept a raw semver (e.g. "1.0.0") as a direct custom version.
+  if (isValidSemver(answer)) {
+    if (compareSemver(answer, version) <= 0) {
+      console.log(`\nWarning: ${answer} is not newer than current ${version}.`);
+      const confirm = (await askRequired('Use it anyway? [y/N]: ')).trim().toLowerCase();
+      if (!['y', 'yes'].includes(confirm)) {
+        console.log('Aborted — version unchanged.');
+        finish(1);
+      }
+    }
+    const applied = applyVersion(answer);
+    console.log(`\nVersion set to ${applied.version} (versionCode ${applied.versionCode}, ios build ${applied.buildNumber})`);
+    finish(0);
+  }
 
   if (['5', 'skip', 's', 'n', 'no'].includes(answer)) {
     console.log('Skipped — version unchanged. NOTE: the GitHub Action will skip the EAS build.');
-    process.exit(2);
+    finish(2);
   }
   let kind = 'patch';
   if (['2', 'minor'].includes(answer)) kind = 'minor';
   else if (['3', 'major'].includes(answer)) kind = 'major';
   else if (['4', 'custom', 'c'].includes(answer)) {
-    const custom = (await ask('Enter new version (x.y.z): ')).trim();
+    const custom = (await askRequired('Enter new version (x.y.z): ')).trim();
     const applied = applyVersion(custom);
     console.log(`\nVersion set to ${applied.version} (versionCode ${applied.versionCode}, ios build ${applied.buildNumber})`);
-    return;
+    finish(0);
   } else if (!['1', 'patch', '', 'p'].includes(answer)) {
     console.error(`Unknown choice "${answer}". Aborting.`);
-    process.exit(1);
+    finish(1);
   }
   const next = bumpSemver(version, kind);
   const applied = applyVersion(next);
   console.log(`\nBumped (${kind}): ${version} -> ${applied.version} (versionCode ${applied.versionCode}, ios build ${applied.buildNumber})`);
+  finish(0);
 }
 
 async function main() {

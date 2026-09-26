@@ -2,6 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { ImageAttachment } from '../types';
 import { recognizeImageText } from './ocr';
+import { recognizeImageLabels } from './imageRecognition';
 
 /** Max images per message — bounds prompt size, storage, and OCR work. */
 export const MAX_IMAGES_PER_MESSAGE = 3;
@@ -85,9 +86,10 @@ export async function captureChatImage(): Promise<PickedChatImage | null> {
 }
 
 /**
- * Persist + OCR a batch of picked images. OCR failures never throw —
- * they are recorded per-attachment as `ocrState: 'error'` so the message
- * can still be sent (the LLM is told OCR was unavailable).
+ * Persist + analyze a batch of picked images. OCR (text) and image labeling
+ * (objects/scenes) run in parallel on-device; per-engine failures never
+ * throw — they are recorded per-attachment as `ocrState` / `labelState`
+ * so the message can still be sent.
  */
 export async function prepareImageAttachments(
   picked: PickedChatImage[],
@@ -101,22 +103,44 @@ export async function prepareImageAttachments(
     } catch {
       // Fall back to the original URI if the copy fails.
     }
+    // Run both on-device engines concurrently to halve attach latency.
+    const [ocrResult, labelResult] = await Promise.allSettled([
+      recognizeImageText(uri),
+      recognizeImageLabels(uri),
+    ]);
+
     let ocrText: string | undefined;
     let ocrState: ImageAttachment['ocrState'] = 'pending';
-    try {
-      const text = await recognizeImageText(uri);
-      if (text) {
-        ocrText = text;
+    if (ocrResult.status === 'fulfilled') {
+      if (ocrResult.value) {
+        ocrText = ocrResult.value;
         ocrState = 'done';
       } else {
         ocrText = '';
         ocrState = 'empty';
       }
-    } catch {
+    } else {
       ocrText = undefined;
       ocrState = 'error';
     }
-    out.push({ id, uri, width: p.width, height: p.height, ocrText, ocrState });
+
+    let labelState: ImageAttachment['labelState'] = 'pending';
+    let labels: ImageAttachment['labels'] = undefined;
+    if (labelResult.status === 'fulfilled') {
+      if (labelResult.value.length > 0) {
+        labels = labelResult.value;
+        labelState = 'done';
+      } else {
+        labels = [];
+        labelState = 'empty';
+      }
+    } else {
+      labels = undefined;
+      labelState = 'error';
+    }
+    // Keep the formatted labels out of storage bloat: labels array is
+    // small; formatting happens at prompt time via formatLabels().
+    out.push({ id, uri, width: p.width, height: p.height, ocrText, ocrState, labels, labelState });
   }
   return out;
 }

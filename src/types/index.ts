@@ -1,3 +1,8 @@
+export interface ImageLabel {
+  text: string;
+  confidence: number;
+}
+
 export interface ImageAttachment {
   id: string;
   /** Local file:// URI persisted under the app's document directory. */
@@ -10,6 +15,13 @@ export interface ImageAttachment {
    */
   ocrText?: string;
   ocrState: 'pending' | 'done' | 'empty' | 'error';
+  /**
+   * Objects/scenes recognized on-device via ML Kit image labeling
+   * (e.g. dog, beach, car with confidence scores). Absent on chats
+   * saved before image recognition was added — treat as unavailable.
+   */
+  labels?: ImageLabel[];
+  labelState?: 'pending' | 'done' | 'empty' | 'error';
 }
 
 export interface Message {

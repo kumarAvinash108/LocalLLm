@@ -51,6 +51,9 @@ Key files:
 | `src/services/huggingface.ts` | `https://huggingface.co/<repo>/resolve/main/<file>` URL builder + `.gguf` repo browser via HF Hub API |
 | `src/services/modelDownloader.ts` | Resumable HF + direct-URL download with progress/cancel, device `.gguf` import (`importGgufFile`), and size-only `validateGgufFile` (uses `expo-file-system/legacy`) |
 | `src/services/llm.ts` | Singleton owner of the native `LlamaContext` (load/unload/streaming completion/stop) |
+| `src/services/ocr.ts` | On-device OCR (ML Kit text recognition) — image pixels → prompt text |
+| `src/services/imageRecognition.ts` | On-device image recognition (ML Kit image labeling) — photo → object/scene labels |
+| `src/services/chatImages.ts` | Image picking/persisting + parallel OCR + labeling per attachment |
 | `src/context/ModelContext.tsx` | Download/load/import state for the UI (progress, errors, persistence; exposes `download`, `downloadFromUrl`, `importFromDevice`) |
 | `src/context/ChatContext.tsx` | Chat history + streaming inference (calls `llm.chatCompletion`) |
 | `src/screens/ModelScreen.tsx` | Download → Load → Chat UI: curated catalog, custom repo/file + `.gguf` browser, **import `.gguf` from device**, **download from direct URL** |
@@ -123,6 +126,21 @@ In **Models → Download from direct URL**:
 
 Paste the raw download URL, not an HTML/repo page URL. Imported and
 URL-downloaded models keep their own licenses — check the source before use.
+
+### Ask about images (offline vision)
+
+Tap the **image icon** in the chat input to attach up to 3 photos (library
+or camera). Each image is analyzed fully on-device, in parallel:
+
+- **OCR** (`@react-native-ml-kit/text-recognition`) reads text —
+  documents, screenshots, signs.
+- **Image recognition** (`@react-native-ml-kit/image-labeling`) labels
+  objects/scenes/animals — e.g. `dog (92%), park (78%)`.
+
+Both results are injected into the prompt as text (the GGUF model itself
+can't see pixels), so you can ask "what's in this photo?" offline. Like
+inference, vision needs a custom dev build — Expo Go has no native
+vision modules.
 
 ## Configuration
 

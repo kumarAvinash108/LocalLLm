@@ -18,9 +18,19 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 # --no-verify bypass passes through silently.
-# Non-interactive environments (no /dev/tty): don't block the push,
-# just remind the user that CI builds only on version changes.
-if [ ! -t 0 ] && [ ! -r /dev/tty ]; then
+# Figure out whether an interactive prompt is possible. NOTE: `[ -r /dev/tty ]`
+# is NOT a valid check — the device node exists (and is "readable") even with
+# no controlling terminal; only actually opening it proves a terminal exists.
+can_prompt=false
+if [ -t 0 ]; then
+  can_prompt=true
+  use_tty=false
+elif : 2>/dev/null < /dev/tty; then
+  can_prompt=true
+  use_tty=true
+fi
+
+if [ "$can_prompt" = false ]; then
   echo "[pre-push] Non-interactive push detected — skipping version prompt."
   echo "[pre-push] Reminder: the EAS build only runs when app.json/package.json version changes."
   echo "[pre-push] Run 'npm run bump' locally if you want a build."
@@ -34,13 +44,14 @@ echo "Current version: $CURRENT"
 echo "The GitHub Action builds on EAS ONLY when the version changes."
 echo ""
 
-# Re-attach the prompt to the terminal: git occupies stdin in pre-push hooks.
-if [ -r /dev/tty ]; then
-  node scripts/bump-version.mjs < /dev/tty
-  STATUS=$?
+# Re-attach the prompt to the terminal: git occupies stdin in pre-push hooks,
+# so when stdin isn't itself the terminal, read from /dev/tty instead.
+# (`|| STATUS=$?` keeps `set -e` from killing the hook before we read STATUS.)
+STATUS=0
+if [ "$use_tty" = true ]; then
+  node scripts/bump-version.mjs < /dev/tty || STATUS=$?
 else
-  node scripts/bump-version.mjs
-  STATUS=$?
+  node scripts/bump-version.mjs || STATUS=$?
 fi
 
 if [ "$STATUS" -eq 2 ]; then

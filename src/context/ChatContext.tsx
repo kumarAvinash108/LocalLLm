@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { Conversation, ImageAttachment, Message } from '../types';
 import { Storage } from '../utils/storage';
 import { chatCompletion, isModelLoaded, stopCompletion } from '../services/llm';
+import { formatLabels } from '../services/imageRecognition';
 import { useModel } from './ModelContext';
 
 /**
@@ -31,8 +32,8 @@ function buildPromptHistory(
   let chars = 0;
   const picked: Pick<Message, 'role' | 'content'>[] = [];
   for (let i = recent.length - 1; i >= 0; i--) {
-    // Images reach the text-only model as OCR text, so measure the
-    // expanded prompt content (not the raw caption) against the budget.
+    // Images reach the text-only model as OCR text + recognition labels,
+    // so measure the expanded prompt content (not the raw caption).
     const content = promptContentForMessage(recent[i]);
     if (picked.length > 0 && chars + content.length > maxChars) break;
     chars += content.length;
@@ -49,14 +50,16 @@ function buildPromptHistory(
 
 /**
  * Text-only GGUF models cannot see pixels. Images are represented by
- * their on-device OCR text so the model can still answer questions
- * about documents, screenshots, signs, etc. — fully offline.
+ * their on-device analysis so the model can still answer questions —
+ * fully offline:
+ * - OCR text for documents, screenshots, signs, etc.
+ * - Image-recognition labels (objects/scenes/animals) for photos.
  */
 export function promptContentForMessage(m: Message): string {
   if (!m.images || m.images.length === 0) return m.content;
   const caption = m.content.trim();
   const parts = [
-    caption || '(The user attached image(s) with no caption. Answer about what the extracted text says.)',
+    caption || '(The user attached image(s) with no caption. Describe what the analysis says is in the image(s).)',
   ];
   m.images.forEach((img, idx) => {
     const n = idx + 1;
@@ -69,6 +72,23 @@ export function promptContentForMessage(m: Message): string {
         `[Image ${n} attached, but on-device text recognition was unavailable for it. ` +
           `Explain you can only read image text when the app is run from a dev build with OCR support.]`,
       );
+    }
+    if (img.labelState === 'done' && img.labels && img.labels.length > 0) {
+      parts.push(
+        `[Image ${n} — objects/scenes recognized on-device]: ${formatLabels(img.labels)}. ` +
+          `Use these labels to describe what is likely in the photo.`,
+      );
+    } else if (img.labelState === 'empty') {
+      parts.push(`[Image ${n}: on-device image recognition found no recognizable objects.]`);
+    } else if (img.labelState === 'error' || img.labelState === undefined) {
+      // Old chats saved before image recognition existed have no labelState:
+      // stay silent rather than confusing the model.
+      if (img.labelState === 'error') {
+        parts.push(
+          `[Image ${n}: on-device image recognition was unavailable for it. ` +
+            `Explain you can only recognize image contents when the app is run from a dev build.]`,
+        );
+      }
     }
   });
   return parts.join('\n\n');

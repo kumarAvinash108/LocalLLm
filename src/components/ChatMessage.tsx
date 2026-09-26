@@ -3,34 +3,46 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator } fr
 import { Ionicons } from '@expo/vector-icons';
 import { Message } from '../types';
 import { Colors } from '../theme/colors';
+import { formatLabels } from '../services/imageRecognition';
 
 interface ChatMessageProps {
   message: Message;
   isLast?: boolean;
 }
 
-function OcrNote({ message }: { message: Message }) {
+function VisionNote({ message }: { message: Message }) {
   const [expanded, setExpanded] = useState(false);
   const images = message.images ?? [];
   if (images.length === 0) return null;
   const withText = images.filter((i) => i.ocrState === 'done' && i.ocrText);
-  const empty = images.filter((i) => i.ocrState === 'empty').length;
-  const failed = images.filter((i) => i.ocrState === 'error' || i.ocrState === 'pending').length;
+  const withLabels = images.filter(
+    (i) => i.labelState === 'done' && i.labels && i.labels.length > 0,
+  );
+  const emptyOcr = images.filter((i) => i.ocrState === 'empty').length;
+  const emptyLabels = images.filter((i) => i.labelState === 'empty').length;
+  const failed = images.filter(
+    (i) =>
+      (i.ocrState === 'error' || i.ocrState === 'pending') &&
+      (i.labelState === 'error' || i.labelState === 'pending' || i.labelState === undefined),
+  ).length;
+  const hasAnalysis = withText.length > 0 || withLabels.length > 0;
   return (
     <View style={styles.ocrBox}>
       <TouchableOpacity
         style={styles.ocrHeader}
         onPress={() => setExpanded((v) => !v)}
         activeOpacity={0.7}>
-        <Ionicons name="document-text-outline" size={13} color={Colors.dark.textSecondary} />
+        <Ionicons name="scan-outline" size={13} color={Colors.dark.textSecondary} />
         <Text style={styles.ocrHeaderText}>
-          {withText.length > 0
-            ? `${withText.length} image(s) • OCR text included`
-            : empty > 0 && failed === 0
-              ? 'No readable text found in image(s)'
-              : 'Image text unavailable (OCR needs a dev build)'}
+          {hasAnalysis
+            ? `${withLabels.length > 0 ? `${withLabels.length} image(s) • objects recognized` : ''}${withLabels.length > 0 && withText.length > 0 ? ' + ' : ''}${withText.length > 0 ? 'OCR text included' : ''}`
+            : emptyOcr > 0 && emptyLabels > 0 && failed === 0
+              ? 'Nothing recognizable found in image(s)'
+              : failed > 0
+                ? 'Image analysis unavailable (vision needs a dev build)'
+                : 'Image attached — analysis pending…'}
         </Text>
-        {withText.length > 0 && (
+        {hasAnalysis && (
           <Ionicons
             name={expanded ? 'chevron-up' : 'chevron-down'}
             size={14}
@@ -38,12 +50,20 @@ function OcrNote({ message }: { message: Message }) {
           />
         )}
       </TouchableOpacity>
-      {expanded &&
-        withText.map((img, idx) => (
-          <Text key={img.id} style={styles.ocrText} selectable>
-            {`Image ${idx + 1} text:\n${img.ocrText}`}
-          </Text>
-        ))}
+      {expanded && (
+        <>
+          {withLabels.map((img, idx) => (
+            <Text key={`${img.id}-labels`} style={styles.ocrText} selectable>
+              {`Image ${idx + 1} objects:\n${formatLabels(img.labels ?? [])}`}
+            </Text>
+          ))}
+          {withText.map((img, idx) => (
+            <Text key={`${img.id}-ocr`} style={styles.ocrText} selectable>
+              {`Image ${idx + 1} text:\n${img.ocrText}`}
+            </Text>
+          ))}
+        </>
+      )}
     </View>
   );
 }
@@ -108,7 +128,7 @@ export const ChatMessage = memo(function ChatMessage({ message, isLast }: ChatMe
             {message.content}
           </Text>
         )}
-        {isUser && <OcrNote message={message} />}
+        {isUser && <VisionNote message={message} />}
       </View>
       {isUser && (
         <View style={styles.avatarContainer}>

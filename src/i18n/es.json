@@ -20,7 +20,12 @@
     "ocrIncluded": "imagen(es) • texto leído sin conexión vía OCR",
     "ocrTextIncluded": "Texto OCR incluido",
     "ocrNoText": "No se encontró texto legible en la(s) imagen(es)",
-    "ocrUnavailable": "Texto de imagen no disponible (OCR necesita una build de desarrollo)"
+    "ocrUnavailable": "Texto de imagen no disponible (OCR necesita una build de desarrollo)",
+    "visionAnalyzing": "Analizando la(s) imagen(es) en el dispositivo…",
+    "visionIncluded": "imagen(es) • texto + objetos leídos sin conexión",
+    "labelsIncluded": "objetos reconocidos",
+    "labelsNone": "Nada reconocible en la(s) imagen(es)",
+    "visionUnavailable": "Análisis no disponible (visión necesita una build de desarrollo)"
   },
   "sidebar": {
     "title": "Historial de Chats",

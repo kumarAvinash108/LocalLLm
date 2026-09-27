@@ -20,6 +20,7 @@ import {
   prepareImageAttachments,
 } from '../services/chatImages';
 import { isOcrAvailable } from '../services/ocr';
+import { isImageRecognitionAvailable } from '../services/imageRecognition';
 
 interface ChatInputProps {
   onSend: (text: string, images: ImageAttachment[]) => void;
@@ -57,10 +58,11 @@ export function ChatInput({ onSend, disabled, onStop, isGenerating }: ChatInputP
 
   const handleAttachPress = () => {
     if (!canAttachMore) return;
-    if (!isOcrAvailable()) {
+    const visionAvailable = isOcrAvailable() || isImageRecognitionAvailable();
+    if (!visionAvailable) {
       Alert.alert(
-        'OCR needs a dev build',
-        'Image text reading runs on-device and needs a custom dev build (Expo Go has no OCR module). You can still attach images, but text extraction may be unavailable.',
+        'Vision needs a dev build',
+        'Image analysis runs on-device and needs a custom dev build (Expo Go has no vision modules). You can still attach images, but text + object recognition may be unavailable.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -75,7 +77,7 @@ export function ChatInput({ onSend, disabled, onStop, isGenerating }: ChatInputP
       );
       return;
     }
-    Alert.alert('Attach image', 'Text is read on-device (offline) and sent to the model with your message.', [
+    Alert.alert('Attach image', 'Text + objects are read on-device (offline) and sent to the model with your message.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Photo library',
@@ -122,6 +124,16 @@ export function ChatInput({ onSend, disabled, onStop, isGenerating }: ChatInputP
                   </View>
                 )}
                 {a.ocrState === 'error' && (
+                  <View style={[styles.ocrBadge, styles.ocrError]}>
+                    <Ionicons name="warning" size={10} color="#fff" />
+                  </View>
+                )}
+                {a.labelState === 'done' && (
+                  <View style={[styles.ocrBadge, styles.labelBadge]}>
+                    <Ionicons name="pricetag" size={10} color="#fff" />
+                  </View>
+                )}
+                {a.labelState === 'error' && a.ocrState !== 'error' && (
                   <View style={[styles.ocrBadge, styles.ocrError]}>
                     <Ionicons name="warning" size={10} color="#fff" />
                   </View>
@@ -194,8 +206,8 @@ export function ChatInput({ onSend, disabled, onStop, isGenerating }: ChatInputP
           {attachments.length > 0 && (
             <Text style={styles.disclaimerText}>
               {attaching
-                ? 'Reading text from image(s) on-device…'
-                : `${attachments.length} image(s) • text read offline via OCR`}
+                ? 'Analyzing image(s) on-device…'
+                : `${attachments.length} image(s) • text + objects read offline`}
             </Text>
           )}
         </View>
@@ -252,6 +264,11 @@ const styles = StyleSheet.create({
   },
   ocrError: {
     backgroundColor: 'rgba(180,40,40,0.85)',
+  },
+  labelBadge: {
+    left: undefined,
+    right: 4,
+    backgroundColor: 'rgba(20,110,60,0.85)',
   },
   removeButton: {
     position: 'absolute',

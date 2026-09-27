@@ -20,7 +20,12 @@
     "ocrIncluded": "image(s) • text read offline via OCR",
     "ocrTextIncluded": "OCR text included",
     "ocrNoText": "No readable text found in image(s)",
-    "ocrUnavailable": "Image text unavailable (OCR needs a dev build)"
+    "ocrUnavailable": "Image text unavailable (OCR needs a dev build)",
+    "visionAnalyzing": "Analyzing image(s) on-device…",
+    "visionIncluded": "image(s) • text + objects read offline",
+    "labelsIncluded": "objects recognized",
+    "labelsNone": "Nothing recognizable found in image(s)",
+    "visionUnavailable": "Image analysis unavailable (vision needs a dev build)"
   },
   "sidebar": {
     "title": "Chat History",

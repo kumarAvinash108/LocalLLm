@@ -19,7 +19,12 @@
     "ocrReading": "डिवाइस पर इमेज से टेक्स्ट पढ़ा जा रहा है…",
     "ocrIncluded": "इमेज • टेक्स्ट ऑफ़लाइन OCR से पढ़ा गया",
     "ocrNoText": "इमेज में कोई पठनीय टेक्स्ट नहीं मिला",
-    "ocrUnavailable": "इमेज टेक्स्ट उपलब्ध नहीं (OCR के लिए dev build चाहिए)"
+    "ocrUnavailable": "इमेज टेक्स्ट उपलब्ध नहीं (OCR के लिए dev build चाहिए)",
+    "visionAnalyzing": "डिवाइस पर इमेज का विश्लेषण हो रहा है…",
+    "visionIncluded": "इमेज • टेक्स्ट + ऑब्जेक्ट ऑफ़लाइन पढ़े गए",
+    "labelsIncluded": "ऑब्जेक्ट पहचाने गए",
+    "labelsNone": "इमेज में कुछ पहचाना नहीं गया",
+    "visionUnavailable": "इमेज विश्लेषण उपलब्ध नहीं (विज़न के लिए dev build चाहिए)"
   },
   "sidebar": {
     "title": "चैट इतिहास",

@@ -69,6 +69,27 @@
     "cancel": "Cancel",
     "confirm": "Confirm"
   },
+  "export": {
+    "title": "Export Chat",
+    "shareText": "Share Formatted Text",
+    "shareTextDesc": "Send markdown directly to apps or clipboard",
+    "exportMarkdown": "Export Markdown (.md)",
+    "exportMarkdownDesc": "Save or share formatted .md file",
+    "exportPlainText": "Export Plain Text (.txt)",
+    "exportPlainTextDesc": "Raw text file compatible with any editor",
+    "exportJson": "Export JSON Backup (.json)",
+    "exportJsonDesc": "Full chat backup that can be re-imported",
+    "backupAll": "Backup All Chats (JSON)",
+    "backupAllDesc": "Export all conversations",
+    "preparing": "Preparing export…",
+    "errorTitle": "Export Failed",
+    "noMessagesTitle": "No Messages",
+    "noMessagesDesc": "Start a conversation before exporting.",
+    "importButton": "Import Chats",
+    "importSuccessTitle": "Import Complete",
+    "importSuccessMessage": "Successfully imported chat conversation(s).",
+    "importErrorTitle": "Import Failed"
+  },
   "languages": {
     "en": "English",
     "es": "Español",

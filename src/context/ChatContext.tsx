@@ -63,6 +63,9 @@ export function promptContentForMessage(m: Message): string {
   ];
   m.images.forEach((img, idx) => {
     const n = idx + 1;
+    if (img.sceneDescription) {
+      parts.push(`[Image ${n} — visual scene description]: ${img.sceneDescription}`);
+    }
     if (img.ocrState === 'done' && img.ocrText) {
       parts.push(`[Image ${n} — text extracted on-device by OCR]:\n${img.ocrText}`);
     } else if (img.ocrState === 'empty') {
@@ -163,6 +166,7 @@ interface ChatContextValue extends ChatState {
   deleteChat: (id: string) => Promise<void>;
   selectChat: (id: string) => void;
   stopGenerating: () => void;
+  importConversations: (imported: Conversation[]) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -406,6 +410,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [state.activeConversationId, state.conversations, createNewChat, notifyActivity]
   );
 
+  const importConversations = useCallback(
+    async (imported: Conversation[]) => {
+      if (!imported.length) return;
+      const merged = [...imported, ...state.conversations];
+      dispatch({ type: 'SET_CONVERSATIONS', conversations: merged });
+      dispatch({ type: 'SET_ACTIVE_CONVERSATION', id: imported[0].id });
+      await Storage.saveConversations(merged);
+      await Storage.setActiveConversationId(imported[0].id);
+    },
+    [state.conversations]
+  );
+
   const stopGenerating = useCallback(() => {
     abortControllerRef.current?.abort();
     stopCompletion();
@@ -422,6 +438,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         deleteChat,
         selectChat,
         stopGenerating,
+        importConversations,
       }}>
       {children}
     </ChatContext.Provider>

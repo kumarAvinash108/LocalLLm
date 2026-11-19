@@ -68,6 +68,27 @@
     "loaded": "लोड हुआ — ऑफ़लाइन चैट के लिए तैयार",
     "manageHint": "मॉडल डाउनलोड व लोड करने के लिए टैप करें"
   },
+  "export": {
+    "title": "चैट निर्यात करें",
+    "shareText": "फॉर्मेटेड टेक्स्ट साझा करें",
+    "shareTextDesc": "ऐप्स या क्लिपबोर्ड पर सीधे मार्कडाउन भेजें",
+    "exportMarkdown": "मार्कडाउन फ़ाइल (.md) निर्यात करें",
+    "exportMarkdownDesc": "फॉर्मेटेड .md फ़ाइल सहेजें या साझा करें",
+    "exportPlainText": "सादा टेक्स्ट (.txt) निर्यात करें",
+    "exportPlainTextDesc": "किसी भी एडिटर के साथ संगत रॉ टेक्स्ट फ़ाइल",
+    "exportJson": "JSON बैकअप (.json) निर्यात करें",
+    "exportJsonDesc": "पूर्ण चैट बैकअप जिसे पुनः आयात किया जा सकता है",
+    "backupAll": "सभी चैट बैकअप (JSON)",
+    "backupAllDesc": "सभी बातचीत निर्यात करें",
+    "preparing": "निर्यात तैयार हो रहा है…",
+    "errorTitle": "निर्यात विफल",
+    "noMessagesTitle": "कोई संदेश नहीं",
+    "noMessagesDesc": "निर्यात करने से पहले बातचीत शुरू करें।",
+    "importButton": "चैट आयात करें",
+    "importSuccessTitle": "आयात पूरा हुआ",
+    "importSuccessMessage": "चैट सफलतापूर्वक आयात की गई।",
+    "importErrorTitle": "आयात विफल"
+  },
   "languages": {
     "en": "English",
     "es": "Español",

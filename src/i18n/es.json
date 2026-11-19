@@ -69,6 +69,27 @@
     "loaded": "Cargado — listo para chatear sin conexión",
     "manageHint": "Toca para descargar y cargar un modelo"
   },
+  "export": {
+    "title": "Exportar Chat",
+    "shareText": "Compartir Texto Formateado",
+    "shareTextDesc": "Enviar markdown directamente a aplicaciones o portapapeles",
+    "exportMarkdown": "Exportar Markdown (.md)",
+    "exportMarkdownDesc": "Guardar o compartir archivo .md formateado",
+    "exportPlainText": "Exportar Texto Plano (.txt)",
+    "exportPlainTextDesc": "Archivo de texto sin formato compatible con cualquier editor",
+    "exportJson": "Exportar Copia de Seguridad JSON (.json)",
+    "exportJsonDesc": "Copia de seguridad completa que se puede volver a importar",
+    "backupAll": "Copia de Seguridad de Todos los Chats (JSON)",
+    "backupAllDesc": "Exportar todas las conversaciones",
+    "preparing": "Preparando exportación…",
+    "errorTitle": "Error al exportar",
+    "noMessagesTitle": "Sin mensajes",
+    "noMessagesDesc": "Inicia una conversación antes de exportar.",
+    "importButton": "Importar Chats",
+    "importSuccessTitle": "Importación completada",
+    "importSuccessMessage": "Conversación(es) importada(s) con éxito.",
+    "importErrorTitle": "Error al importar"
+  },
   "languages": {
     "en": "English",
     "es": "Español",

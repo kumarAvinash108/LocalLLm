@@ -9,9 +9,10 @@ interface HistoryItemProps {
   isActive: boolean;
   onPress: () => void;
   onDelete: () => void;
+  onShare?: () => void;
 }
 
-export function HistoryItem({ conversation, isActive, onPress, onDelete }: HistoryItemProps) {
+export function HistoryItem({ conversation, isActive, onPress, onDelete, onShare }: HistoryItemProps) {
   return (
     <TouchableOpacity
       style={[styles.container, isActive && styles.activeContainer]}
@@ -30,12 +31,22 @@ export function HistoryItem({ conversation, isActive, onPress, onDelete }: Histo
         ellipsizeMode="tail">
         {conversation.title}
       </Text>
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={onDelete}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <Ionicons name="trash-outline" size={14} color={Colors.dark.textTertiary} />
-      </TouchableOpacity>
+      <View style={styles.actionButtons}>
+        {onShare && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={onShare}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}>
+            <Ionicons name="share-outline" size={14} color={Colors.dark.textTertiary} />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={onDelete}
+          hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}>
+          <Ionicons name="trash-outline" size={14} color={Colors.dark.textTertiary} />
+        </TouchableOpacity>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -65,8 +76,13 @@ const styles = StyleSheet.create({
   activeTitle: {
     color: Colors.dark.text,
   },
-  deleteButton: {
-    marginLeft: 8,
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 6,
+  },
+  actionButton: {
     opacity: 0.6,
   },
 });

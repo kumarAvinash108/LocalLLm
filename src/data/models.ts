@@ -51,3 +51,15 @@ export const DEFAULT_MODELS: ModelInfo[] = [
 
 export const DEFAULT_MODEL_ID = DEFAULT_MODELS.find((m) => m.recommended)?.id
   ?? DEFAULT_MODELS[0].id;
+
+export const MIRAGE_VISION_MODEL: ModelInfo = {
+  id: 'mirage-ocr-vlm-22mb',
+  name: 'Cactus Mirage (OCR & Vision VLM)',
+  repo: 'Cactus-Compute/mirage',
+  file: 'mirage.cact',
+  sizeMB: 22,
+  description:
+    'Ultra-compact 22MB on-device VLM by Cactus Compute (https://cactuscompute.com/blog/mirage). ' +
+    'Extracts OCR text, scene description, and detected objects in a single pass.',
+  license: 'Apache-2.0',
+};

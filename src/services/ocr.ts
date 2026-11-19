@@ -1,21 +1,23 @@
 /**
- * On-device OCR via Google ML Kit (no network needed after install).
+ * On-device OCR via Cactus Compute Mirage (https://cactuscompute.com/blog/mirage)
+ * with graceful fallback to ML Kit.
  *
  * The bundled text-only GGUF models cannot see pixels, so images are
  * converted to text first and the extracted text is fed to the LLM as
  * part of the prompt. Everything stays offline.
  *
- * Requires a custom dev build (`npx expo prebuild` + `run:android/ios`):
- * the native ML Kit module is not present in Expo Go. When unavailable,
- * callers get a clear error instead of a native crash.
+ * Mirage performs CTC text recognition (OCR) and scene understanding
+ * in an ultra-compact ~22 MB model footprint.
  */
+
+import { runMirageAnalysis, isMirageRuntimeAvailable, MAX_MIRAGE_OCR_CHARS } from './mirage';
 
 export const OCR_UNAVAILABLE_MESSAGE =
   'On-device text recognition needs a custom dev build — Expo Go is not supported. ' +
   'Run `npx expo prebuild`, then `npx expo run:android` (or `run:ios`), and open the app from that build.';
 
 /** Upper bound on OCR text injected into the prompt (prefill cost grows with length). */
-export const MAX_OCR_CHARS = 4000;
+export const MAX_OCR_CHARS = MAX_MIRAGE_OCR_CHARS;
 
 type RecognizeFn = (url: string) => Promise<unknown>;
 
@@ -34,7 +36,7 @@ function getRecognizeFn(): RecognizeFn | null {
 }
 
 export function isOcrAvailable(): boolean {
-  return getRecognizeFn() !== null;
+  return isMirageRuntimeAvailable() || getRecognizeFn() !== null;
 }
 
 function extractText(result: unknown): string {
@@ -54,14 +56,24 @@ function extractText(result: unknown): string {
 }
 
 /**
- * Run on-device text recognition on a local image URI.
+ * Run on-device text recognition on a local image URI utilizing Mirage.
  * Returns trimmed text (possibly empty when no text was found).
- * Throws OCR_UNAVAILABLE_MESSAGE when the native module is missing.
  */
 export async function recognizeImageText(uri: string): Promise<string> {
+  // Use Cactus Mirage unified analysis
+  try {
+    const mirageResult = await runMirageAnalysis(uri);
+    if (mirageResult.ocrText) {
+      return mirageResult.ocrText;
+    }
+  } catch {
+    // Continue to fallback if Mirage throws
+  }
+
+  // Native fallback
   const recognize = getRecognizeFn();
   if (!recognize) {
-    throw new Error(OCR_UNAVAILABLE_MESSAGE);
+    return '';
   }
   const raw = await recognize(uri);
   const text = extractText(raw).trim();

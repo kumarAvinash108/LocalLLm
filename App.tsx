@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Platform,
   I18nManager,
+  Alert,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -25,17 +26,29 @@ import { ChatScreen } from './src/screens/ChatScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { ModelScreen } from './src/screens/ModelScreen';
 import { HistoryItem } from './src/components/HistoryItem';
+import { ExportModal } from './src/components/ExportModal';
+import { importConversationsFromFile } from './src/services/chatExport';
 import { Colors } from './src/theme/colors';
 import { Conversation } from './src/types';
 
 const Stack = createNativeStackNavigator();
 
-function SidebarContent({ onNewChat, onSelectChat, onDeleteChat, onOpenSettings, onOpenModels }: {
+function SidebarContent({
+  onNewChat,
+  onSelectChat,
+  onDeleteChat,
+  onOpenSettings,
+  onOpenModels,
+  onExportChat,
+  onImportChats,
+}: {
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
   onOpenSettings: () => void;
   onOpenModels: () => void;
+  onExportChat: (conv: Conversation) => void;
+  onImportChats: () => void;
 }) {
   const { t } = useTranslation();
   const { conversations, activeConversationId } = useChat();
@@ -61,10 +74,19 @@ function SidebarContent({ onNewChat, onSelectChat, onDeleteChat, onOpenSettings,
   return (
     <View style={styles.drawerContainer}>
       <View style={[styles.drawerHeader, { paddingTop: insets.top + 16 }]}>
-        <TouchableOpacity style={styles.newChatButton} onPress={onNewChat} activeOpacity={0.7}>
-          <Ionicons name="add" size={20} color={Colors.dark.text} />
-          <Text style={styles.newChatText}>{t('sidebar.newChat')}</Text>
-        </TouchableOpacity>
+        <View style={styles.drawerActionsRow}>
+          <TouchableOpacity style={styles.newChatButton} onPress={onNewChat} activeOpacity={0.7}>
+            <Ionicons name="add" size={20} color={Colors.dark.text} />
+            <Text style={styles.newChatText}>{t('sidebar.newChat')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.importChatButton}
+            onPress={onImportChats}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="download-outline" size={18} color={Colors.dark.textSecondary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.drawerScroll}>
@@ -84,6 +106,7 @@ function SidebarContent({ onNewChat, onSelectChat, onDeleteChat, onOpenSettings,
                   isActive={conv.id === activeConversationId}
                   onPress={() => onSelectChat(conv.id)}
                   onDelete={() => onDeleteChat(conv.id)}
+                  onShare={() => onExportChat(conv)}
                 />
               ))}
             </View>
@@ -113,13 +136,64 @@ function SidebarContent({ onNewChat, onSelectChat, onDeleteChat, onOpenSettings,
 function MainScreen({ navigation }: { navigation: any }) {
   const { t } = useTranslation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { createNewChat, selectChat, deleteChat, activeConversation } = useChat();
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [exportTargetConversation, setExportTargetConversation] = useState<Conversation | null>(null);
+
+  const {
+    conversations,
+    activeConversation,
+    createNewChat,
+    selectChat,
+    deleteChat,
+    importConversations,
+  } = useChat();
   const { status } = useModel();
 
   const isRTL = I18nManager.isRTL;
   const insets = useSafeAreaInsets();
 
   const closeDrawer = () => setDrawerOpen(false);
+
+  const handleOpenExport = () => {
+    if (!activeConversation || activeConversation.messages.length === 0) {
+      Alert.alert(
+        t('export.noMessagesTitle', 'No Messages'),
+        t('export.noMessagesDesc', 'Start a conversation before exporting.'),
+      );
+      return;
+    }
+    setExportTargetConversation(activeConversation);
+    setExportModalVisible(true);
+  };
+
+  const handleExportFromSidebar = (conv: Conversation) => {
+    if (!conv.messages.length) {
+      Alert.alert(
+        t('export.noMessagesTitle', 'No Messages'),
+        t('export.noMessagesDesc', 'This conversation has no messages to export.'),
+      );
+      return;
+    }
+    closeDrawer();
+    setExportTargetConversation(conv);
+    setExportModalVisible(true);
+  };
+
+  const handleImportChats = async () => {
+    try {
+      const imported = await importConversationsFromFile();
+      if (imported.length > 0) {
+        await importConversations(imported);
+        closeDrawer();
+        Alert.alert(
+          t('export.importSuccessTitle', 'Import Complete'),
+          t('export.importSuccessMessage', `Successfully imported ${imported.length} conversation(s).`),
+        );
+      }
+    } catch (e) {
+      Alert.alert(t('export.importErrorTitle', 'Import Failed'), (e as Error).message);
+    }
+  };
 
   return (
     <Drawer
@@ -149,6 +223,8 @@ function MainScreen({ navigation }: { navigation: any }) {
             closeDrawer();
             navigation.navigate('Models');
           }}
+          onExportChat={handleExportFromSidebar}
+          onImportChats={handleImportChats}
         />
       )}>
       <View style={styles.root}>
@@ -157,25 +233,45 @@ function MainScreen({ navigation }: { navigation: any }) {
           <TouchableOpacity
             style={styles.menuButton}
             onPress={() => setDrawerOpen(true)}
-            activeOpacity={0.7}>
+            activeOpacity={0.7}
+            accessibilityLabel="Open menu">
             <Ionicons name="menu" size={24} color={Colors.dark.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {activeConversation?.title ?? t('app.name')}
           </Text>
-          <TouchableOpacity
-            style={styles.menuButton}
-            onPress={() => navigation.navigate('Models')}
-            activeOpacity={0.7}>
-            <Ionicons
-              name="hardware-chip-outline"
-              size={22}
-              color={status === 'ready' ? Colors.dark.success : Colors.dark.warning}
-            />
-          </TouchableOpacity>
+          <View style={styles.headerRightActions}>
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={handleOpenExport}
+              activeOpacity={0.7}
+              accessibilityLabel="Export chat">
+              <Ionicons name="share-outline" size={21} color={Colors.dark.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => navigation.navigate('Models')}
+              activeOpacity={0.7}
+              accessibilityLabel="Models">
+              <Ionicons
+                name="hardware-chip-outline"
+                size={22}
+                color={status === 'ready' ? Colors.dark.success : Colors.dark.warning}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
         <ChatScreen onOpenModels={() => navigation.navigate('Models')} />
       </View>
+      <ExportModal
+        visible={exportModalVisible}
+        conversation={exportTargetConversation}
+        allConversations={conversations}
+        onClose={() => {
+          setExportModalVisible(false);
+          setExportTargetConversation(null);
+        }}
+      />
     </Drawer>
   );
 }
@@ -285,6 +381,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.dark.text,
   },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   headerSpacer: {
     width: 44,
   },
@@ -297,7 +397,13 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 8,
   },
+  drawerActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   newChatButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -306,6 +412,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.dark.border,
+  },
+  importChatButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.dark.surface,
   },
   newChatText: {
     fontSize: 14,

@@ -41,7 +41,7 @@
           "enableEntitlements": true,
           "entitlementsProfile": "production",
           "forceCxx20": true,
-          "enableOpenCLAndHexagon": true
+          "enableOpenCLAndHexagon": false
         }
       ],
       [
@@ -55,7 +55,20 @@
       "expo-localization",
       "expo-sqlite",
       "expo-status-bar",
-      "expo-font"
+      "expo-font",
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "reactNativeArchitectures": [
+              "arm64-v8a"
+            ],
+            "enableProguardInReleaseBuilds": true,
+            "extraProguardRules": "-dontwarn com.mybigday.llama.**\n-keep class com.mybigday.llama.** { *; }"
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

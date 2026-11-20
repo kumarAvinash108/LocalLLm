@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Message } from '../types';
 import { Colors } from '../theme/colors';
 import { formatLabels } from '../services/imageRecognition';
+import { shareMessageText } from '../services/chatExport';
 
 interface ChatMessageProps {
   message: Message;
@@ -52,6 +53,13 @@ function VisionNote({ message }: { message: Message }) {
       </TouchableOpacity>
       {expanded && (
         <>
+          {images.map((img, idx) =>
+            img.sceneDescription ? (
+              <Text key={`${img.id}-scene`} style={styles.ocrText} selectable>
+                {`Image ${idx + 1} scene:\n${img.sceneDescription}`}
+              </Text>
+            ) : null,
+          )}
           {withLabels.map((img, idx) => (
             <Text key={`${img.id}-labels`} style={styles.ocrText} selectable>
               {`Image ${idx + 1} objects:\n${formatLabels(img.labels ?? [])}`}
@@ -129,6 +137,17 @@ export const ChatMessage = memo(function ChatMessage({ message, isLast }: ChatMe
           </Text>
         )}
         {isUser && <VisionNote message={message} />}
+        {!!message.content && (
+          <View style={[styles.messageFooter, isUser ? styles.messageFooterUser : styles.messageFooterAssistant]}>
+            <TouchableOpacity
+              onPress={() => void shareMessageText(message)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={styles.messageActionButton}
+              activeOpacity={0.6}>
+              <Ionicons name="share-outline" size={13} color={Colors.dark.textTertiary} />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
       {isUser && (
         <View style={styles.avatarContainer}>
@@ -233,5 +252,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.25)',
     borderRadius: 8,
     padding: 8,
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    marginTop: 6,
+  },
+  messageFooterUser: {
+    justifyContent: 'flex-end',
+  },
+  messageFooterAssistant: {
+    justifyContent: 'flex-start',
+  },
+  messageActionButton: {
+    padding: 2,
+    opacity: 0.8,
   },
 });

@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { ImageAttachment } from '../types';
 import { recognizeImageText } from './ocr';
 import { recognizeImageLabels } from './imageRecognition';
+import { runMirageAnalysis } from './mirage';
 
 /** Max images per message — bounds prompt size, storage, and OCR work. */
 export const MAX_IMAGES_PER_MESSAGE = 3;
@@ -86,10 +87,11 @@ export async function captureChatImage(): Promise<PickedChatImage | null> {
 }
 
 /**
- * Persist + analyze a batch of picked images. OCR (text) and image labeling
- * (objects/scenes) run in parallel on-device; per-engine failures never
- * throw — they are recorded per-attachment as `ocrState` / `labelState`
- * so the message can still be sent.
+ * Persist + analyze a batch of picked images.
+ * Utilizes Cactus Compute Mirage (https://cactuscompute.com/blog/mirage)
+ * to perform single-pass OCR + scene description + object detection on-device.
+ * Per-engine failures never throw — they are recorded per-attachment as
+ * `ocrState` / `labelState` so the message can still be sent.
  */
 export async function prepareImageAttachments(
   picked: PickedChatImage[],
@@ -103,44 +105,72 @@ export async function prepareImageAttachments(
     } catch {
       // Fall back to the original URI if the copy fails.
     }
-    // Run both on-device engines concurrently to halve attach latency.
-    const [ocrResult, labelResult] = await Promise.allSettled([
-      recognizeImageText(uri),
-      recognizeImageLabels(uri),
-    ]);
 
     let ocrText: string | undefined;
     let ocrState: ImageAttachment['ocrState'] = 'pending';
-    if (ocrResult.status === 'fulfilled') {
-      if (ocrResult.value) {
-        ocrText = ocrResult.value;
+    let labelState: ImageAttachment['labelState'] = 'pending';
+    let labels: ImageAttachment['labels'] = undefined;
+    let sceneDescription: string | undefined;
+    let visionEngine: ImageAttachment['visionEngine'] = 'mirage';
+
+    try {
+      // Run single-pass Mirage analysis (OCR + Scene understanding)
+      const mirageRes = await runMirageAnalysis(uri);
+      visionEngine = mirageRes.engine;
+      sceneDescription = mirageRes.sceneDescription || undefined;
+
+      if (mirageRes.ocrText) {
+        ocrText = mirageRes.ocrText;
         ocrState = 'done';
       } else {
         ocrText = '';
         ocrState = 'empty';
       }
-    } else {
-      ocrText = undefined;
-      ocrState = 'error';
-    }
 
-    let labelState: ImageAttachment['labelState'] = 'pending';
-    let labels: ImageAttachment['labels'] = undefined;
-    if (labelResult.status === 'fulfilled') {
-      if (labelResult.value.length > 0) {
-        labels = labelResult.value;
+      if (mirageRes.labels && mirageRes.labels.length > 0) {
+        labels = mirageRes.labels;
         labelState = 'done';
       } else {
         labels = [];
         labelState = 'empty';
       }
-    } else {
-      labels = undefined;
-      labelState = 'error';
+    } catch {
+      // Graceful fallback to legacy multi-engine if Mirage encountered an error
+      const [ocrResult, labelResult] = await Promise.allSettled([
+        recognizeImageText(uri),
+        recognizeImageLabels(uri),
+      ]);
+
+      if (ocrResult.status === 'fulfilled') {
+        ocrText = ocrResult.value || '';
+        ocrState = ocrResult.value ? 'done' : 'empty';
+      } else {
+        ocrText = undefined;
+        ocrState = 'error';
+      }
+
+      if (labelResult.status === 'fulfilled') {
+        labels = labelResult.value.length > 0 ? labelResult.value : [];
+        labelState = labelResult.value.length > 0 ? 'done' : 'empty';
+      } else {
+        labels = undefined;
+        labelState = 'error';
+      }
+      visionEngine = 'mlkit';
     }
-    // Keep the formatted labels out of storage bloat: labels array is
-    // small; formatting happens at prompt time via formatLabels().
-    out.push({ id, uri, width: p.width, height: p.height, ocrText, ocrState, labels, labelState });
+
+    out.push({
+      id,
+      uri,
+      width: p.width,
+      height: p.height,
+      ocrText,
+      ocrState,
+      labels,
+      labelState,
+      sceneDescription,
+      visionEngine,
+    });
   }
   return out;
 }

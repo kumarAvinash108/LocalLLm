@@ -5,18 +5,18 @@
     "description": "Chat with open-weight LLMs fully on-device. Download a GGUF model once, then chat offline.",
     "scheme": "localllm",
     "githubUrl": "https://github.com/kumarAvinash108/LocalLLm",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kumaravinash108.localllm",
-      "buildNumber": "7"
+      "buildNumber": "8"
     },
     "android": {
       "package": "com.kumaravinash108.localllm",
-      "versionCode": 7,
+      "versionCode": 8,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"
@@ -61,7 +61,7 @@
         "expo-build-properties",
         {
           "android": {
-            "reactNativeArchitectures": [
+            "buildArchs": [
               "arm64-v8a"
             ],
             "enableProguardInReleaseBuilds": true,

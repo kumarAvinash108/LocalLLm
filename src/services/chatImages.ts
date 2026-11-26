@@ -1,8 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { ImageAttachment } from '../types';
-import { recognizeImageText } from './ocr';
-import { recognizeImageLabels } from './imageRecognition';
 import { runMirageAnalysis } from './mirage';
 
 /** Max images per message — bounds prompt size, storage, and OCR work. */
@@ -88,10 +86,11 @@ export async function captureChatImage(): Promise<PickedChatImage | null> {
 
 /**
  * Persist + analyze a batch of picked images.
- * Utilizes Cactus Compute Mirage (https://cactuscompute.com/blog/mirage)
- * to perform single-pass OCR + scene description + object detection on-device.
- * Per-engine failures never throw — they are recorded per-attachment as
- * `ocrState` / `labelState` so the message can still be sent.
+ * Uses on-device ML Kit OCR + image labeling (Cactus Mirage hooks in
+ * when its native runtime is available). Failures are recorded per-
+ * attachment as `ocrState` / `labelState: 'error'` so the message can
+ * still be sent and the UI can show "vision unavailable" instead of
+ * "nothing found".
  */
 export async function prepareImageAttachments(
   picked: PickedChatImage[],
@@ -114,7 +113,9 @@ export async function prepareImageAttachments(
     let visionEngine: ImageAttachment['visionEngine'] = 'mirage';
 
     try {
-      // Run single-pass Mirage analysis (OCR + Scene understanding)
+      // Run single-pass Mirage analysis (OCR + Scene understanding).
+      // Throws when no vision engine is available (e.g. Expo Go) so we
+      // mark error states instead of reporting "nothing found".
       const mirageRes = await runMirageAnalysis(uri);
       visionEngine = mirageRes.engine;
       sceneDescription = mirageRes.sceneDescription || undefined;
@@ -135,27 +136,13 @@ export async function prepareImageAttachments(
         labelState = 'empty';
       }
     } catch {
-      // Graceful fallback to legacy multi-engine if Mirage encountered an error
-      const [ocrResult, labelResult] = await Promise.allSettled([
-        recognizeImageText(uri),
-        recognizeImageLabels(uri),
-      ]);
-
-      if (ocrResult.status === 'fulfilled') {
-        ocrText = ocrResult.value || '';
-        ocrState = ocrResult.value ? 'done' : 'empty';
-      } else {
-        ocrText = undefined;
-        ocrState = 'error';
-      }
-
-      if (labelResult.status === 'fulfilled') {
-        labels = labelResult.value.length > 0 ? labelResult.value : [];
-        labelState = labelResult.value.length > 0 ? 'done' : 'empty';
-      } else {
-        labels = undefined;
-        labelState = 'error';
-      }
+      // Vision engine unavailable or failed — record per-engine errors.
+      // Never fall through to empty states: those mean "ran, found nothing".
+      ocrText = undefined;
+      labels = undefined;
+      sceneDescription = undefined;
+      ocrState = 'error';
+      labelState = 'error';
       visionEngine = 'mlkit';
     }
 

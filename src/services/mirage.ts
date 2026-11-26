@@ -16,6 +16,7 @@
  */
 
 import { ImageLabel } from '../types';
+import { NativeModules } from 'react-native';
 
 export const MIRAGE_MODEL_INFO = {
   id: 'mirage-ocr-vlm',
@@ -50,21 +51,10 @@ export interface MirageAnalysisResult {
 type CactusRunner = (imageUri: string, task?: string) => Promise<unknown>;
 
 function getCactusRunner(): CactusRunner | null {
-  try {
-    // Optional dynamic integration for Cactus native runtime / cactus-react-native
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const cactus = require('cactus-react-native');
-    const runner = cactus?.Mirage ?? cactus?.CactusVLM ?? cactus?.default?.Mirage;
-    if (typeof runner === 'function') {
-      return async (uri: string) => {
-        const instance = new runner();
-        return await instance.describe(uri);
-      };
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  // cactus-react-native is optional and not installed in this project.
+  // A static require() breaks Metro resolution; enable only after adding
+  // the package and wiring the native runtime here.
+  return null;
 }
 
 /**
@@ -221,56 +211,86 @@ export async function runMirageAnalysis(imageUri: string): Promise<MirageAnalysi
       res.latencyMs = Date.now() - start;
       return res;
     } catch {
-      // Fallback below
+      // Fall through to ML Kit below — do not swallow into empty results.
     }
   }
 
-  // Fallback to native text & label extractors if Cactus runner is not yet hooked
   return await runFallbackAnalysis(imageUri, start);
 }
 
 /**
- * Graceful fallback when running in environment before Mirage runtime hooks.
- * Uses available on-device ML Kit / vision modules and formats them in the unified Mirage schema.
+ * Fallback when the Mirage/Cactus runtime is unavailable.
+ * Uses on-device ML Kit text recognition + image labeling.
+ *
+ * Throws when no vision engine can run (e.g. Expo Go) or when every
+ * available engine fails — callers must surface that as an error state
+ * instead of reporting "nothing found in image".
  */
 async function runFallbackAnalysis(imageUri: string, start: number): Promise<MirageAnalysisResult> {
-  let ocrText = '';
-  const labels: ImageLabel[] = [];
+  const canOcr = NativeModules.TextRecognition != null;
+  const canLabel = NativeModules.ImageLabeling != null;
 
-  // Try OCR
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const ocrMod = require('@react-native-ml-kit/text-recognition');
-    const rec = ocrMod?.default?.recognize ?? ocrMod?.recognize;
-    if (typeof rec === 'function') {
-      const raw = await rec(imageUri);
-      if (typeof raw === 'object' && raw?.text) {
-        ocrText = String(raw.text).trim();
-      } else if (typeof raw === 'string') {
-        ocrText = raw.trim();
-      }
-    }
-  } catch {
-    // OCR unavailable
+  if (!canOcr && !canLabel) {
+    throw new Error(
+      'On-device vision needs a custom dev build — Expo Go is not supported. ' +
+        'Run `npx expo prebuild`, then `npx expo run:android` (or `run:ios`).',
+    );
   }
 
-  // Try Labels
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const labelMod = require('@react-native-ml-kit/image-labeling');
-    const labelFn = labelMod?.default?.label ?? labelMod?.label;
-    if (typeof labelFn === 'function') {
-      const raw = await labelFn(imageUri);
-      if (Array.isArray(raw)) {
-        for (const item of raw) {
-          const text = item?.text || item?.label;
-          const confidence = typeof item?.confidence === 'number' ? item.confidence : 0.8;
-          if (text) labels.push({ text: String(text).trim(), confidence });
+  let ocrText = '';
+  let ocrError: unknown = null;
+  const labels: ImageLabel[] = [];
+  let labelError: unknown = null;
+
+  if (canOcr) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const ocrMod = require('@react-native-ml-kit/text-recognition');
+      const rec = ocrMod?.default?.recognize ?? ocrMod?.recognize;
+      if (typeof rec === 'function') {
+        const raw = await rec(imageUri);
+        if (typeof raw === 'object' && raw?.text) {
+          ocrText = String(raw.text).trim();
+        } else if (typeof raw === 'string') {
+          ocrText = raw.trim();
         }
       }
+    } catch (e) {
+      ocrError = e;
     }
-  } catch {
-    // Labels unavailable
+  }
+
+  if (canLabel) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const labelMod = require('@react-native-ml-kit/image-labeling');
+      const labelFn = labelMod?.default?.label ?? labelMod?.label;
+      if (typeof labelFn === 'function') {
+        const raw = await labelFn(imageUri);
+        if (Array.isArray(raw)) {
+          for (const item of raw) {
+            const text = item?.text || item?.label;
+            const confidence = typeof item?.confidence === 'number' ? item.confidence : 0;
+            if (text && confidence >= 0.5) {
+              labels.push({ text: String(text).trim(), confidence });
+            }
+          }
+          labels.sort((a, b) => b.confidence - a.confidence);
+        }
+      }
+    } catch (e) {
+      labelError = e;
+    }
+  }
+
+  const ocrFailed = canOcr && ocrError != null;
+  const labelFailed = canLabel && labelError != null;
+  // Every engine that could run failed — surface the error, not "empty".
+  if ((canOcr || canLabel) && (ocrFailed || !canOcr) && (labelFailed || !canLabel)) {
+    const err = ocrError ?? labelError;
+    throw err instanceof Error
+      ? err
+      : new Error('On-device image analysis failed. Try a custom dev build if you are on Expo Go.');
   }
 
   let sceneDescription = '';
@@ -281,7 +301,10 @@ async function runFallbackAnalysis(imageUri: string, start: number): Promise<Mir
   }
 
   return {
-    ocrText: ocrText.length > MAX_MIRAGE_OCR_CHARS ? ocrText.slice(0, MAX_MIRAGE_OCR_CHARS) + '\n…[truncated]' : ocrText,
+    ocrText:
+      ocrText.length > MAX_MIRAGE_OCR_CHARS
+        ? ocrText.slice(0, MAX_MIRAGE_OCR_CHARS) + '\n…[truncated]'
+        : ocrText,
     sceneDescription,
     labels: labels.slice(0, 5),
     engine: 'mlkit',

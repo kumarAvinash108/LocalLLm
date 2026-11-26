@@ -13,6 +13,8 @@
  * callers get a clear error instead of a native crash.
  */
 
+import { NativeModules } from 'react-native';
+
 export const IMAGE_RECOGNITION_UNAVAILABLE_MESSAGE =
   'On-device image recognition needs a custom dev build — Expo Go is not supported. ' +
   'Run `npx expo prebuild`, then `npx expo run:android` (or `run:ios`), and open the app from that build.';
@@ -29,7 +31,21 @@ export const MIN_LABEL_CONFIDENCE = 0.5;
 
 type LabelFn = (url: string) => Promise<unknown>;
 
+/**
+ * The ML Kit JS package's default export is a Proxy that throws when the
+ * native module is missing — but only when a method is *accessed*. Check
+ * NativeModules directly so availability is accurate in Expo Go.
+ */
+export function isImageRecognitionAvailable(): boolean {
+  try {
+    return NativeModules.ImageLabeling != null;
+  } catch {
+    return false;
+  }
+}
+
 function getLabelFn(): LabelFn | null {
+  if (!isImageRecognitionAvailable()) return null;
   try {
     // Optional dependency: keep the import lazy so Expo Go / web (where the
     // native module is missing) still loads the rest of the app.
@@ -41,10 +57,6 @@ function getLabelFn(): LabelFn | null {
   } catch {
     return null;
   }
-}
-
-export function isImageRecognitionAvailable(): boolean {
-  return getLabelFn() !== null;
 }
 
 function extractLabels(result: unknown): ImageLabel[] {

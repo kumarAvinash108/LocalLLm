@@ -10,7 +10,8 @@
  * in an ultra-compact ~22 MB model footprint.
  */
 
-import { runMirageAnalysis, isMirageRuntimeAvailable, MAX_MIRAGE_OCR_CHARS } from './mirage';
+import { NativeModules } from 'react-native';
+import { isMirageRuntimeAvailable, MAX_MIRAGE_OCR_CHARS } from './mirage';
 
 export const OCR_UNAVAILABLE_MESSAGE =
   'On-device text recognition needs a custom dev build — Expo Go is not supported. ' +
@@ -21,7 +22,23 @@ export const MAX_OCR_CHARS = MAX_MIRAGE_OCR_CHARS;
 
 type RecognizeFn = (url: string) => Promise<unknown>;
 
+/**
+ * The ML Kit JS package always exports `recognize`, even when the native
+ * module is missing (it throws a linking error only at call time). Check
+ * NativeModules directly so Expo Go reports vision as unavailable instead
+ * of failing later during analysis.
+ */
+export function isOcrAvailable(): boolean {
+  if (isMirageRuntimeAvailable()) return true;
+  try {
+    return NativeModules.TextRecognition != null;
+  } catch {
+    return false;
+  }
+}
+
 function getRecognizeFn(): RecognizeFn | null {
+  if (!isOcrAvailable()) return null;
   try {
     // Optional dependency: keep the import lazy so Expo Go / web (where the
     // native module is missing) still loads the rest of the app.
@@ -33,10 +50,6 @@ function getRecognizeFn(): RecognizeFn | null {
   } catch {
     return null;
   }
-}
-
-export function isOcrAvailable(): boolean {
-  return isMirageRuntimeAvailable() || getRecognizeFn() !== null;
 }
 
 function extractText(result: unknown): string {
@@ -60,20 +73,9 @@ function extractText(result: unknown): string {
  * Returns trimmed text (possibly empty when no text was found).
  */
 export async function recognizeImageText(uri: string): Promise<string> {
-  // Use Cactus Mirage unified analysis
-  try {
-    const mirageResult = await runMirageAnalysis(uri);
-    if (mirageResult.ocrText) {
-      return mirageResult.ocrText;
-    }
-  } catch {
-    // Continue to fallback if Mirage throws
-  }
-
-  // Native fallback
   const recognize = getRecognizeFn();
   if (!recognize) {
-    return '';
+    throw new Error(OCR_UNAVAILABLE_MESSAGE);
   }
   const raw = await recognize(uri);
   const text = extractText(raw).trim();

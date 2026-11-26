@@ -11,7 +11,12 @@
  */
 
 import { NativeModules } from 'react-native';
-import { isMirageRuntimeAvailable, MAX_MIRAGE_OCR_CHARS } from './mirage';
+import {
+  cleanOcrText,
+  extractOcrText,
+  isMirageRuntimeAvailable,
+  MAX_MIRAGE_OCR_CHARS,
+} from './mirage';
 
 export const OCR_UNAVAILABLE_MESSAGE =
   'On-device text recognition needs a custom dev build — Expo Go is not supported. ' +
@@ -52,25 +57,9 @@ function getRecognizeFn(): RecognizeFn | null {
   }
 }
 
-function extractText(result: unknown): string {
-  if (!result) return '';
-  if (typeof result === 'string') return result;
-  if (typeof result === 'object') {
-    const r = result as { text?: unknown; blocks?: { text?: unknown }[] };
-    if (typeof r.text === 'string') return r.text;
-    if (Array.isArray(r.blocks)) {
-      return r.blocks
-        .map((b) => (typeof b?.text === 'string' ? b.text : ''))
-        .filter(Boolean)
-        .join('\n');
-    }
-  }
-  return '';
-}
-
 /**
  * Run on-device text recognition on a local image URI utilizing Mirage.
- * Returns trimmed text (possibly empty when no text was found).
+ * Returns cleaned, trimmed text (possibly empty when no text was found).
  */
 export async function recognizeImageText(uri: string): Promise<string> {
   const recognize = getRecognizeFn();
@@ -78,7 +67,5 @@ export async function recognizeImageText(uri: string): Promise<string> {
     throw new Error(OCR_UNAVAILABLE_MESSAGE);
   }
   const raw = await recognize(uri);
-  const text = extractText(raw).trim();
-  if (!text) return '';
-  return text.length > MAX_OCR_CHARS ? text.slice(0, MAX_OCR_CHARS) + '\n…[truncated]' : text;
+  return cleanOcrText(extractOcrText(raw), MAX_OCR_CHARS);
 }

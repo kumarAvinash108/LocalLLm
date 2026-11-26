@@ -31,7 +31,49 @@ export const MIRAGE_MODEL_INFO = {
   hfUrl: 'https://huggingface.co/Cactus-Compute/mirage',
 };
 
-export const MAX_MIRAGE_OCR_CHARS = 4000;
+export const MAX_MIRAGE_OCR_CHARS = 2500;
+
+/**
+ * Extract plain text from an ML Kit text recognition response (string,
+ * `{ text }`, or `{ blocks: [{ text }] }`).
+ */
+export function extractOcrText(result: unknown): string {
+  if (!result) return '';
+  if (typeof result === 'string') return result;
+  if (typeof result === 'object') {
+    const r = result as { text?: unknown; blocks?: { text?: unknown }[] };
+    if (typeof r.text === 'string' && r.text.trim()) return r.text;
+    if (Array.isArray(r.blocks)) {
+      return r.blocks
+        .map((b) => (typeof b?.text === 'string' ? b.text : ''))
+        .filter(Boolean)
+        .join('\n');
+    }
+  }
+  return '';
+}
+
+/**
+ * Normalize whitespace, drop pure punctuation/symbol noise on non-text photos,
+ * and enforce the prompt-size cap on extracted OCR text.
+ */
+export function cleanOcrText(raw: string, maxChars = MAX_MIRAGE_OCR_CHARS): string {
+  const normalized = raw
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]{2,}/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  // Reject pure punctuation/symbol noise (e.g. "| . -") with no letters or digits.
+  if (!normalized || !/[\p{L}\p{N}]/u.test(normalized)) {
+    return '';
+  }
+
+  if (normalized.length <= maxChars) return normalized;
+  return normalized.slice(0, maxChars).trimEnd() + '\n…[truncated]';
+}
 
 export interface MirageAnalysisResult {
   /** OCR text extracted from the image. Empty string if no text found. */
@@ -208,6 +250,7 @@ export async function runMirageAnalysis(imageUri: string): Promise<MirageAnalysi
     try {
       const raw = await runner(imageUri);
       const res = parseMirageOutput(raw);
+      res.ocrText = cleanOcrText(res.ocrText);
       res.latencyMs = Date.now() - start;
       return res;
     } catch {
@@ -249,11 +292,7 @@ async function runFallbackAnalysis(imageUri: string, start: number): Promise<Mir
       const rec = ocrMod?.default?.recognize ?? ocrMod?.recognize;
       if (typeof rec === 'function') {
         const raw = await rec(imageUri);
-        if (typeof raw === 'object' && raw?.text) {
-          ocrText = String(raw.text).trim();
-        } else if (typeof raw === 'string') {
-          ocrText = raw.trim();
-        }
+        ocrText = cleanOcrText(extractOcrText(raw));
       }
     } catch (e) {
       ocrError = e;
@@ -301,10 +340,7 @@ async function runFallbackAnalysis(imageUri: string, start: number): Promise<Mir
   }
 
   return {
-    ocrText:
-      ocrText.length > MAX_MIRAGE_OCR_CHARS
-        ? ocrText.slice(0, MAX_MIRAGE_OCR_CHARS) + '\n…[truncated]'
-        : ocrText,
+    ocrText,
     sceneDescription,
     labels: labels.slice(0, 5),
     engine: 'mlkit',
